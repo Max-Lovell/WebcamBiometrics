@@ -1,20 +1,11 @@
 {
-  "name": "webcambiometrics",
-  "version": "1.0.0",
-  "main": "index.js",
+  "name": "webcam-biometrics-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/SussexPsychologySoftware/WebcamBiometrics.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/SussexPsychologySoftware/WebcamBiometrics/issues"
-  },
-  "homepage": "https://github.com/SussexPsychologySoftware/WebcamBiometrics#readme",
-  "description": ""
+    "test": "npm test --workspaces"
+  }
 }
