@@ -6,7 +6,14 @@ export default defineConfig({
         exclude: ['@mediapipe/tasks-vision']
     },
     worker: {
-        // Ensure Workers are compiled as ES Modules
+        // Ensure Workers are compiled as ES Modules, allows 'import()' to work natively.
         format: 'es'
+    },
+    server: {
+        // Optional: sometimes helps with strict MIME type checking for WASM
+        headers: {
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+        }
     }
 });
