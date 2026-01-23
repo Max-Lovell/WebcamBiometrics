@@ -20,7 +20,7 @@ export default class FaceLandmarkerClient {
       },
       outputFaceBlendshapes: true,
       outputFacialTransformationMatrixes: true,
-      runningMode: "IMAGE",
+      runningMode: "IMAGE", // CONSIDER VIDEO MODE?
       numFaces: 1,
     });
   }
