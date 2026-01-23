@@ -51,7 +51,7 @@ function generateSupport(
 }
 
 export default class WebEyeTrack {
-  
+
   // Instance variables
   private blazeGaze: BlazeGaze;
   private faceLandmarkerClient: FaceLandmarkerClient;
@@ -83,20 +83,25 @@ export default class WebEyeTrack {
   // Configuration
   public maxPoints: number = 5;
   public clickTTL: number = 60; // Time-to-live for click points in seconds
+  public modelUrl: string; // CHANGED to add model URL property TODO: do I need this property?
 
   constructor(
       maxPoints: number = 5,
-      clickTTL: number = 60 // Time-to-live for click points in seconds
+      clickTTL: number = 60, // Time-to-live for click points in seconds
+      modelUrl?: string, // CHANGED accept model url
     ) {
 
     // Initialize services
-    this.blazeGaze = new BlazeGaze();
+    this.blazeGaze = new BlazeGaze(modelUrl);
     this.faceLandmarkerClient = new FaceLandmarkerClient();
     this.kalmanFilter = new KalmanFilter2D();
-    
+
     // Storing configs
     this.maxPoints = maxPoints;
     this.clickTTL = clickTTL;
+
+    // CHANGED add model url
+    this.modelUrl = modelUrl || 'https://cdn.jsdelivr.net/gh/brownhci/WebEyeTrack@main/web/model.json'
   }
 
   async initialize(): Promise<void> {

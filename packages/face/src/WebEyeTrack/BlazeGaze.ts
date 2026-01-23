@@ -7,12 +7,18 @@ export default class BlazeGaze {
     // private model: tf.GraphModel | null = null;
     private model: tf.LayersModel | null = null;  // Use LayersModel for tf.loadLayersModel
 
-    constructor() {
-        // Optionally trigger model load in constructor
+    // CHANGED to add model URL property
+    private modelUrl: string;
+
+    // CHANGED to add accept config
+    constructor(modelUrl?: string) {
+        // Default to a CDN if no local path is provided
+        this.modelUrl = modelUrl || 'https://cdn.jsdelivr.net/gh/brownhci/WebEyeTrack@main/web/model.json';
     }
 
     async loadModel(): Promise<void> {
-        const path = `${self.location.origin}/web/model.json`;
+        // CHANGED to use variable
+        const path = this.modelUrl;
         try {
             // Load model from local directory (adjust path if needed)
             this.model = await tf.loadLayersModel(path);
@@ -22,7 +28,7 @@ export default class BlazeGaze {
             console.error(error);
             throw error;
         }
-        
+
         // Freeze the ``cnn_model`` layers but keep the gaze_MLP trainable
         this.model.getLayer('cnn_encoder').trainable = false;
     }

@@ -10,8 +10,10 @@ export default class WebEyeTrackProxy {
 
   constructor(webcamClient: WebcamClient) {
 
-    // Initialize the WebEyeTrackWorker
-    this.worker = new WebEyeTrackWorker();
+    // Initialize the WebEyeTrackWorker - CHANGED to use modern syntax for automatic bundling with vite.
+    this.worker = new Worker(new URL('./WebEyeTrackWorker.ts', import.meta.url), {
+      type: 'module'
+    });
     console.log('WebEyeTrackProxy worker initialized');
 
     this.worker.onmessage = (mess) =>{
