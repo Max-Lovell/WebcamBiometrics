@@ -4,7 +4,7 @@ let tracker: WebEyeTrack;
 
 const ctx: Worker = self as any;
 let status: 'idle' | 'inference' | 'calib' = 'idle';
-let lastTimestamp: number | null = null;
+// let lastTimestamp: number | null = null;
 
 self.onmessage = async (e) => {
   const { type, payload } = e.data;

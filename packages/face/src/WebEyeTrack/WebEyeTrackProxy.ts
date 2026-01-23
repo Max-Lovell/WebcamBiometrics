@@ -65,7 +65,7 @@ export default class WebEyeTrackProxy {
   }
 
   // Callback for gaze results
-  onGazeResults: (gazeResult: GazeResult) => void = () => { 
+  onGazeResults: (gazeResult: GazeResult) => void = () => {
     console.warn('onGazeResults callback not set');
   }
 }

@@ -20,14 +20,14 @@ const MAX_STEP_CM = 5
 const VERTICAL_FOV_DEGREES = 60;
 const NEAR = 1.0; // 1cm
 const FAR = 10000; // 100m
-const ORIGIN_POINT_LOCATION = 'BOTTOM_LEFT_CORNER';
+// const ORIGIN_POINT_LOCATION = 'BOTTOM_LEFT_CORNER';
 
 // ============================================================================
 // Compute Affine Transformation Matrix
 // ============================================================================
 
 export function computeAffineMatrixML(src: number[][], dst: number[][]): number[][] {
-  const N = src.length;
+  // const N = src.length;
   const srcAug = src.map(row => [...row, 1]); // [N, 3]
 
   const X = new Matrix(srcAug);   // [N, 3]
@@ -373,14 +373,13 @@ export function convertUvToXyz(
   const w = worldHomogeneous.get(3, 0);
   const x = worldHomogeneous.get(0, 0) / w;
   const y = worldHomogeneous.get(1, 0) / w;
-  const z = worldHomogeneous.get(2, 0) / w;
+  // const z = worldHomogeneous.get(2, 0) / w;
 
   // Step 6: Scale using the provided zRelative
   const xRelative = -x; // negated to match original convention
-  const yRelative = y;
-  // zRelative stays as-is (external input)
+    // zRelative stays as-is (external input)
 
-  return [xRelative, yRelative, zRelative];
+  return [xRelative, y, zRelative];
 }
 
 export function imageShiftTo3D(shift2d: [number, number], depthZ: number, K: Matrix): [number, number, number] {
@@ -462,8 +461,7 @@ export function refineDepthByRadialMagnitude(
   const delta = 1e-1 * distancePerPoint;
   const safeDelta = Math.max(-MAX_STEP_CM, Math.min(MAX_STEP_CM, delta));
 
-  const newZ = oldZ + safeDelta;
-  return newZ;
+  return oldZ + safeDelta;
 }
 
 export function faceReconstruction(

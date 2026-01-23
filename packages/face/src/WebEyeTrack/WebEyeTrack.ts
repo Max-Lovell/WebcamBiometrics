@@ -106,7 +106,7 @@ export default class WebEyeTrack {
   }
 
   pruneCalibData() {
-    
+
     // Prune the calibration data to keep only the last maxPoints points
     tf.tidy(() => {
       if (this.calibData.supportX.length > this.maxPoints) {
@@ -142,8 +142,8 @@ export default class WebEyeTrack {
     }
 
     // Avoid pts that are too close to the last click
-    if (this.latestMouseClick && 
-        Math.abs(x - this.latestMouseClick.x) < 0.05 && 
+    if (this.latestMouseClick &&
+        Math.abs(x - this.latestMouseClick.x) < 0.05 &&
         Math.abs(y - this.latestMouseClick.y) < 0.05) {
       console.log("🖱️ Click ignored due to proximity to last click");
       this.latestMouseClick = { x, y, timestamp: Date.now() };
@@ -172,7 +172,7 @@ export default class WebEyeTrack {
     }
 
     // Perform 3D face reconstruction and determine the pose in 3d cm space
-    const [metricTransform, metricFace] = faceReconstruction(
+    const [, metricFace] = faceReconstruction( //TODO is metricTransform from const [metricTransform, metricFace] needed?
       this.perspectiveMatrix,
       normFaceLandmarks as [number, number][],
       faceRT,
@@ -184,12 +184,10 @@ export default class WebEyeTrack {
     );
 
     // Lastly, compute the gaze origins in 3D space using the metric face
-    const faceOrigin3D = computeFaceOrigin3D(
-      metricFace
-    );
-
     // return faceOrigin3D;
-    return faceOrigin3D;
+    return computeFaceOrigin3D(
+        metricFace
+    );
   }
 
   prepareInput(frame: ImageData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
@@ -371,7 +369,7 @@ export default class WebEyeTrack {
     }
     // gaze_state = 'closed';
 
-    // If 'closed' return (0, 0) 
+    // If 'closed' return (0, 0)
     if (gaze_state === 'closed') {
       return {
         facialLandmarks: result.faceLandmarks[0],
