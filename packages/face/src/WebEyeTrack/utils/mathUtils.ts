@@ -432,7 +432,7 @@ export function refineDepthByRadialMagnitude(
   finalProjectedPts: [number, number][],
   detected2D: [number, number][],
   oldZ: number,
-  alpha = 0.5
+  alpha = 1e-1
 ): number {
   const numPts = finalProjectedPts.length;
 
@@ -458,7 +458,7 @@ export function refineDepthByRadialMagnitude(
   }
 
   const distancePerPoint = totalDistance / numPts;
-  const delta = 1e-1 * distancePerPoint;
+  const delta = alpha * distancePerPoint; // CHANGED: used alpha here??
   const safeDelta = Math.max(-MAX_STEP_CM, Math.min(MAX_STEP_CM, delta));
 
   return oldZ + safeDelta;
@@ -527,7 +527,7 @@ export function faceReconstruction(
     let newZ = initialZGuess;
     for (let i = 0; i < 10; i++) {
       const projectedPts = canonical.map(p => transform3DTo2D(transform3DTo3D(p, finalTransform), intrinsicsMatrix));
-      newZ = refineDepthByRadialMagnitude(projectedPts, detected2D, finalTransform.get(2, 3), 0.5);
+      newZ = refineDepthByRadialMagnitude(projectedPts, detected2D, finalTransform.get(2, 3), 1e-1);
       if (Math.abs(newZ - finalTransform.get(2, 3)) < 0.25) break;
 
       const newX = firstFinalTransform.get(0, 3) * (newZ / initialZGuess);
