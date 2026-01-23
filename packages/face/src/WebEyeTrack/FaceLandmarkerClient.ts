@@ -1,4 +1,5 @@
-import { FaceLandmarker, FilesetResolver, DrawingUtils, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 
 // References
 // https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/web_js#video

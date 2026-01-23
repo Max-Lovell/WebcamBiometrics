@@ -1,5 +1,5 @@
 import WebcamClient from "./WebcamClient";
-import { GazeResult } from "./types";
+import type { GazeResult } from "./types";
 
 // @ts-ignore
 import WebEyeTrackWorker from "worker-loader?inline=no-fallback!./WebEyeTrackWorker.ts";

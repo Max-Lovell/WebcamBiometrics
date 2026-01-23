@@ -1,24 +1,25 @@
-import { FaceLandmarkerResult, NormalizedLandmark, Matrix as MediaPipeMatrix } from "@mediapipe/tasks-vision";
+import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
+//import { FaceLandmarkerResult, NormalizedLandmark, Matrix as MediaPipeMatrix } from "@mediapipe/tasks-vision";
 import * as tf from '@tensorflow/tfjs';
-import { Matrix } from 'ml-matrix';
+import {Matrix} from 'ml-matrix';
 
-import { Point, GazeResult } from "./types";
+import type {GazeResult, Point} from "./types";
 import BlazeGaze from "./BlazeGaze";
 import FaceLandmarkerClient from "./FaceLandmarkerClient";
-import { 
-  computeFaceOrigin3D, 
-  createIntrinsicsMatrix, 
-  createPerspectiveMatrix, 
-  translateMatrix, 
-  faceReconstruction, 
-  estimateFaceWidth, 
-  getHeadVector, 
-  obtainEyePatch, 
-  computeEAR,
+import {
+  applyAffineMatrix,
   computeAffineMatrixML,
-  applyAffineMatrix
+  computeEAR,
+  computeFaceOrigin3D,
+  createIntrinsicsMatrix,
+  createPerspectiveMatrix,
+  estimateFaceWidth,
+  faceReconstruction,
+  getHeadVector,
+  obtainEyePatch,
+  translateMatrix
 } from "./utils/mathUtils";
-import { KalmanFilter2D } from "./utils/filter";
+import {KalmanFilter2D} from "./utils/filter";
 
 // Reference
 // https://mediapipe-studio.webapps.google.com/demo/face_landmarker
