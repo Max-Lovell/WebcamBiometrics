@@ -1,14 +1,19 @@
 import WebcamClient from "./WebcamClient";
 import type { GazeResult } from "./types";
 
-// @ts-ignore
+interface TrackerConfig {
+  maxPoints?: number;
+  clickTTL?: number;
+  modelUrl?: string;
+}
+
 // import WebEyeTrackWorker from "worker-loader?inline=no-fallback!./WebEyeTrackWorker.ts";
 export default class WebEyeTrackProxy {
   private worker: Worker;
 
   public status: 'idle' | 'inference' | 'calib' = 'idle';
 
-  constructor(webcamClient: WebcamClient) {
+  constructor(webcamClient: WebcamClient, config: TrackerConfig = {}) {
 
     // Initialize the WebEyeTrackWorker - CHANGED to use modern syntax for automatic bundling with vite.
     this.worker = new Worker(new URL('./WebEyeTrackWorker.ts', import.meta.url), {
@@ -54,7 +59,10 @@ export default class WebEyeTrackProxy {
     }
 
     // Initialize the worker
-    this.worker.postMessage({ type: 'init' });
+    this.worker.postMessage({
+      type: 'init',
+      payload: config
+    })
 
     // Add mouse handler for re-calibration
     window.addEventListener('click', (e: MouseEvent) => {
