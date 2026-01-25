@@ -56,21 +56,43 @@ export default class WebcamClient {
     }
 
     private _processFrames(): void {
-        const process = async () => {
-            if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
+        // Check for API support (Chrome/Edge/Opera support this; Firefox/Safari may not)
+        if ('requestVideoFrameCallback' in this.videoElement) {
 
-            // Convert the current video frame to ImageData
-            const imageData = convertVideoFrameToImageData(this.videoElement);
+            const process = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+                if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
 
-            // Call the frame callback if provided
-            if (this.frameCallback) {
-                await this.frameCallback(imageData, performance.now());
+                const imageData = convertVideoFrameToImageData(this.videoElement);
+
+                // FIX: MediaPipe crashes on 0, so ensure we are always > 0
+                let timestamp = metadata.mediaTime * 1000;
+                if (timestamp === 0) timestamp = 0.0001;
+
+                if (this.frameCallback) {
+                    // Pass the precise camera timestamp
+                    void this.frameCallback(imageData, timestamp);
+                }
+
+                // Register for the next specific frame
+                this.videoElement.requestVideoFrameCallback(process);
+            };
+
+            this.videoElement.requestVideoFrameCallback(process);
+
+        } else {
+            // Fallback for browsers without requestVideoFrameCallback (e.g. older Safari)
+            console.warn("requestVideoFrameCallback missing. Falling back to requestAnimationFrame.");
+
+            const process = () => {
+                if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
+
+                const imageData = convertVideoFrameToImageData(this.videoElement);
+                // Fallback to performance.now(), good enough for basic tracking, worse for rPPG
+                if (this.frameCallback) void this.frameCallback(imageData, performance.now());
+
+                requestAnimationFrame(process);
             }
-
-            // Request the next frame
             requestAnimationFrame(process);
-        };
-
-        requestAnimationFrame(process);
+        }
     }
 }
