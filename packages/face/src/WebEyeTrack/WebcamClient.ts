@@ -64,7 +64,7 @@ export default class WebcamClient {
 
             // Call the frame callback if provided
             if (this.frameCallback) {
-                await this.frameCallback(imageData, this.videoElement.currentTime);
+                await this.frameCallback(imageData, performance.now());
             }
 
             // Request the next frame
