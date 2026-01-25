@@ -34,3 +34,10 @@ export interface GazeResult {
   durations: Record<string, number>; // seconds
   timestamp: number; // milliseconds
 }
+
+export interface TrackingContext {
+  videoTime: number; // metadata.mediaTime (rVFC) OR performance.now() (fallback)
+  systemTime: number; // Source: metadata.expectedDisplayTime (rVFC) OR performance.now() (fallback)
+  frameId: number; // Source: metadata.presentedFrames (rVFC) OR incrementing counter (fallback)
+  rawMetadata?: VideoFrameCallbackMetadata; // raw data for debugging (optional incase fallback)
+}
