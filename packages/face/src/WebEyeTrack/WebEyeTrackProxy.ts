@@ -1,5 +1,5 @@
 import WebcamClient from "./WebcamClient";
-import type { GazeResult } from "./types";
+import type {GazeResult, TrackingContext} from "./types";
 
 interface TrackerConfig {
   maxPoints?: number;
@@ -31,12 +31,12 @@ export default class WebEyeTrackProxy {
           console.log('[WebEyeTrackProxy] Worker is ready');
 
           // Start the webcam client and set up the frame callback
-          webcamClient.startWebcam(async (frame: ImageData, timestamp: number) => {
+          webcamClient.startWebcam(async (frame: ImageData, context: TrackingContext) => {
             // Send the frame to the worker for processing
             if (this.status === 'idle') {
               this.worker.postMessage({
                 type: 'step',
-                payload: { frame, timestamp }
+                payload: { frame, context }
               })
             }
           });

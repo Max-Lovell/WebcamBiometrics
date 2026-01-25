@@ -1,6 +1,7 @@
 // C.F. https://github.com/google-ai-edge/mediapipe/issues/5257
 
 import WebEyeTrack from './WebEyeTrack';
+import type { TrackingContext } from './types';
 
 let tracker: WebEyeTrack;
 
@@ -17,7 +18,7 @@ type StepMessage = {
   type: 'step';
   payload: {
     frame: ImageData;
-    timestamp: number;
+    context: TrackingContext;
   };
 };
 
@@ -55,9 +56,11 @@ self.onmessage = async (e: MessageEvent) => {
 
         status = 'inference';
         self.postMessage({ type: 'statusUpdate', status: status});
-
-        const result = await tracker.step(data.payload.frame as ImageData, data.payload.timestamp);
-        // lastTimestamp = data.payload.timestamp;
+        const { frame, context } = data.payload;
+        // console.log(context);
+        const result = await tracker.step(frame,  context.videoTime);
+        // Attach context to result so main thread can log
+        (result as any).context = context;
         self.postMessage({ type: 'stepResult', result });
 
         status = 'idle';

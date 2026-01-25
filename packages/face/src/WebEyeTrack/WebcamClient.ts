@@ -1,8 +1,11 @@
 import { convertVideoFrameToImageData } from './utils/misc';
+import type { TrackingContext } from './types';
+
 export default class WebcamClient {
     private videoElement: HTMLVideoElement;
     private stream?: MediaStream;
-    private frameCallback?: (frame: ImageData, timestamp: number) => Promise<void>;
+    private frameCallback?: (frame: ImageData, context: TrackingContext) => Promise<void>;
+    private fallbackFrameCount = 0;
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -12,10 +15,10 @@ export default class WebcamClient {
         this.videoElement = videoElement;
     }
 
-    async startWebcam(frameCallback?: (frame: ImageData, timestamp: number) => Promise<void>): Promise<void> {
+    async startWebcam(frameCallback?: (frame: ImageData, context: TrackingContext) => Promise<void>): Promise<void> {
         try {
             const constraints: MediaStreamConstraints = {
-                video: {
+                video: { // TODO: check these constraints
                     // width: { ideal: 1280 },
                     // height: { ideal: 720 },
                     width: { ideal: 640 },
@@ -56,40 +59,44 @@ export default class WebcamClient {
     }
 
     private _processFrames(): void {
-        // Check for API support (Chrome/Edge/Opera support this; Firefox/Safari may not)
-        if ('requestVideoFrameCallback' in this.videoElement) {
+        if ('requestVideoFrameCallback' in this.videoElement) { // Higher Precision for if available
 
-            const process = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+            // 'now' and 'metadata' are provided by the browser API
+            const process = (now: number, metadata: VideoFrameCallbackMetadata) => {
                 if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
 
                 const imageData = convertVideoFrameToImageData(this.videoElement);
 
-                // FIX: MediaPipe crashes on 0, so ensure we are always > 0
-                let timestamp = metadata.mediaTime * 1000;
-                if (timestamp === 0) timestamp = 0.0001;
+                // Wrap them in your context
+                const context: TrackingContext = {
+                    videoTime: (metadata.mediaTime * 1000) || 0.0001, // Convert s to ms
+                    systemTime: now,
+                    frameId: metadata.presentedFrames,
+                    rawMetadata: metadata // TODO: consider how expectedDisplayTime might be useful?
+                };
 
-                if (this.frameCallback) {
-                    // Pass the precise camera timestamp
-                    void this.frameCallback(imageData, timestamp);
-                }
-
-                // Register for the next specific frame
+                if (this.frameCallback) void this.frameCallback(imageData, context);
                 this.videoElement.requestVideoFrameCallback(process);
             };
 
             this.videoElement.requestVideoFrameCallback(process);
 
-        } else {
-            // Fallback for browsers without requestVideoFrameCallback (e.g. older Safari)
+        } else { // Fallback (Firefox, Safari)
             console.warn("requestVideoFrameCallback missing. Falling back to requestAnimationFrame.");
 
             const process = () => {
                 if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
 
                 const imageData = convertVideoFrameToImageData(this.videoElement);
-                // Fallback to performance.now(), good enough for basic tracking, worse for rPPG
-                if (this.frameCallback) void this.frameCallback(imageData, performance.now());
+                const now = performance.now();
+                
+                const context: TrackingContext = {
+                    videoTime: now, // Best effort: use system time
+                    systemTime: now,
+                    frameId: ++this.fallbackFrameCount,
+                };
 
+                if (this.frameCallback) void this.frameCallback(imageData, context);
                 requestAnimationFrame(process);
             }
             requestAnimationFrame(process);
