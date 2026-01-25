@@ -13,7 +13,7 @@ export default defineConfig({
         // Optional: sometimes helps with strict MIME type checking for WASM
         headers: {
             'Cross-Origin-Opener-Policy': 'same-origin',
-            'Cross-Origin-Embedder-Policy': 'require-corp',
+            'Cross-Origin-Embedder-Policy': 'credentialless',
         }
     }
 });
