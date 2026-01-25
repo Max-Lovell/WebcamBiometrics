@@ -1,38 +1,48 @@
-import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
-import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
+import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
+import {FaceLandmarker, FilesetResolver} from "@mediapipe/tasks-vision";
 
 // References
 // https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/web_js#video
 export default class FaceLandmarkerClient {
-  private faceLandmarker: any;
+  private faceLandmarker: FaceLandmarker | null = null;
 
   constructor() {
   }
 
   async initialize() {
-    const filesetResolver = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
-    );
-    this.faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-      baseOptions: {
-        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
-        delegate: "GPU",
-      },
-      outputFaceBlendshapes: true,
-      outputFacialTransformationMatrixes: true,
-      runningMode: "VIDEO",
-      numFaces: 1,
-    });
+    // TODO facelandmarker is broken for vite so below is a hack to get it working
+    //https://github.com/google-ai-edge/mediapipe/issues/5257
+    const filesetResolver = await FilesetResolver.forVisionTasks("/wasm");
+    try {
+      const response = await fetch(filesetResolver.wasmLoaderPath);
+      // Use indirect eval to execute the script in the global scope.
+      // This is required for the library to find the ModuleFactory.
+      (0, eval)(await response.text());
+      // FIX: Cast to 'any' to bypass TS2790 strict check
+      // delete wasmLoaderPath to trick FaceLandmarker.createFromOptions into thinking it doesn't need to load the script
+      delete (filesetResolver as any).wasmLoaderPath;
+
+      return this.faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: {
+          modelAssetPath: `/wasm/face_landmarker.task`,
+          delegate: "GPU",
+        },
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        runningMode: "VIDEO",
+        numFaces: 1,
+      });
+    } catch (e) {
+      console.error("Failed to manually load MediaPipe WASM loader:", e);
+    }
   }
 
-  async processFrame(frame: ImageData): Promise<FaceLandmarkerResult | null> {
+  async processFrame(frame: ImageData, timestamp: number): Promise<FaceLandmarkerResult | null> {
     if (!this.faceLandmarker) {
       console.error("FaceLandmarker is not loaded yet.");
       return null;
     }
 
-    let result: FaceLandmarkerResult;
-    result = await this.faceLandmarker.detect(frame);
-    return result;
+    return this.faceLandmarker.detectForVideo(frame, timestamp);
   }
 }
