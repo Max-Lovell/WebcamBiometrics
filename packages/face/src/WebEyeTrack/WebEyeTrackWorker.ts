@@ -3,7 +3,7 @@
 import WebEyeTrack from './WebEyeTrack';
 import type { TrackingContext } from './types';
 import { extractAverageRGB } from '@webcambiometrics/vitals'; // Import the decoupled logic
-import { FACE_ROIS } from '../utils/roiUtils';
+import { FACE_ROIS } from './utils/roiUtils';
 
 let tracker: WebEyeTrack;
 
