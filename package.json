@@ -6,7 +6,9 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "npm test --workspaces"
+    "test": "npm test --workspaces",
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspace=@webcambiometrics/vitals && npm run build --workspace=@webcambiometrics/face"
   },
   "devDependencies": {
     "@types/node": "^25.0.10"
