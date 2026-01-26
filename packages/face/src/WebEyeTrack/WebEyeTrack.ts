@@ -21,6 +21,9 @@ import {
 } from "./utils/mathUtils";
 import {KalmanFilter2D} from "./utils/filter";
 
+import { extractAverageRGB } from "@webcambiometrics/vitals";
+import { FACE_ROIS } from "../utils/roiUtils";
+
 // Reference
 // https://mediapipe-studio.webapps.google.com/demo/face_landmarker
 
@@ -442,6 +445,26 @@ export default class WebEyeTrack {
       total: tic5 - tic1
     };
 
+    // NEW rPPG result
+    const width = frame.width;
+    const height = frame.height;
+    const landmarks = result.faceLandmarks[0]; // Normalized [0,1]
+
+    // Helper to convert indices to absolute Points
+    const getRegionPoints = (indices: number[]) => {
+      return indices.map(index => ({
+        x: landmarks[index].x * width,
+        y: landmarks[index].y * height
+      }));
+    };
+
+    // Extract signals
+    const signals = {
+      forehead: extractAverageRGB(frame, getRegionPoints(FACE_ROIS.forehead), timestamp),
+      leftCheek: extractAverageRGB(frame, getRegionPoints(FACE_ROIS.leftCheek), timestamp),
+      rightCheek: extractAverageRGB(frame, getRegionPoints(FACE_ROIS.rightCheek), timestamp),
+    };
+
     // Return GazeResult
     let gaze_result: GazeResult = {
       facialLandmarks: result.faceLandmarks[0],
@@ -454,7 +477,8 @@ export default class WebEyeTrack {
       gazeState: gaze_state,
       normPog: kalmanOutput,
       durations: durations,
-      timestamp: timestamp
+      timestamp: timestamp,
+      roiSignals: signals
     };
 
     // Debug: Printout the tf.Memory

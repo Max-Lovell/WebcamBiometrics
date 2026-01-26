@@ -1,4 +1,5 @@
 import type {NormalizedLandmark, Matrix, Classifications} from "@mediapipe/tasks-vision";
+import type { RGBSample } from "@webcambiometrics/vitals";
 
 // export type Point = [number, number];
 export type Point = number[];
@@ -33,6 +34,13 @@ export interface GazeResult {
   // Meta data
   durations: Record<string, number>; // seconds
   timestamp: number; // milliseconds
+
+  //rPPG
+  roiSignals?: {
+    forehead: RGBSample;
+    leftCheek: RGBSample;
+    rightCheek: RGBSample;
+  };
 }
 
 export interface TrackingContext {
