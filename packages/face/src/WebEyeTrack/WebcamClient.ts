@@ -21,10 +21,11 @@ export default class WebcamClient {
         try {
             const constraints: MediaStreamConstraints = {
                 video: { // TODO: check these constraints
-                    // width: { ideal: 1280 },
-                    // height: { ideal: 720 },
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
+                    width: { min: 640, ideal: 1920 },
+                    height: { min: 400, ideal: 1080 },
+                    // width: { ideal: 640 },
+                    // height: { ideal: 480 },
+                    frameRate: { ideal: 60, min: 30 },
                     facingMode: "user"
                 },
                 audio: false
@@ -74,7 +75,6 @@ export default class WebcamClient {
 
                 const imageData = convertVideoFrameToImageData(this.videoElement);
 
-                // Wrap them in your context
                 const context: TrackingContext = {
                     videoTime: (metadata.mediaTime * 1000) || 0.0001, // Convert s to ms
                     systemTime: now,
@@ -98,7 +98,7 @@ export default class WebcamClient {
                 const now = performance.now();
 
                 const context: TrackingContext = {
-                    videoTime: now, // Best effort: use system time
+                    videoTime: now,
                     systemTime: now,
                     frameId: ++this.fallbackFrameCount,
                 };
