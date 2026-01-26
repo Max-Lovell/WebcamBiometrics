@@ -34,10 +34,13 @@ export default class WebEyeTrackProxy {
           webcamClient.startWebcam(async (frame: ImageData, context: TrackingContext) => {
             // Send the frame to the worker for processing
             if (this.status === 'idle') {
+              // extract the buffer to transfer ownership
+              const buffer = frame.data.buffer; // Transfer memory ownership rather than copy.
+
               this.worker.postMessage({
                 type: 'step',
                 payload: { frame, context }
-              })
+              }, [buffer])
             }
           });
           break;
