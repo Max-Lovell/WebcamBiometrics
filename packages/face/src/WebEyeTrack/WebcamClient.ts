@@ -6,6 +6,8 @@ export default class WebcamClient {
     private stream?: MediaStream;
     private frameCallback?: (frame: ImageData, context: TrackingContext) => Promise<void>;
     private fallbackFrameCount = 0;
+    private isRunning: boolean = false; // Flag to kill the loop
+    private handleLoadedData = () => this._processFrames();
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -31,6 +33,7 @@ export default class WebcamClient {
             // Request webcam access
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.videoElement.srcObject = this.stream;
+            this.isRunning = true;
 
             // Set the callback if provided
             if (frameCallback) {
@@ -41,10 +44,8 @@ export default class WebcamClient {
             this.videoElement.onloadedmetadata = () => {
                 this.videoElement.play();
             };
-
-            this.videoElement.addEventListener('loadeddata', () => {
-                this._processFrames();
-            });
+            // Use reference for removal later
+            this.videoElement.addEventListener('loadeddata', this.handleLoadedData);
 
         } catch (error) {
             console.error("Error accessing the webcam:", error);
@@ -52,10 +53,16 @@ export default class WebcamClient {
     }
 
     stopWebcam(): void {
+        this.isRunning = false; // Stop the rvfc/raf loop
+
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = undefined;
         }
+
+        // Clean up listeners to prevent memory leaks
+        this.videoElement.removeEventListener('loadeddata', this.handleLoadedData);
+        this.videoElement.srcObject = null;
     }
 
     private _processFrames(): void {
@@ -63,7 +70,7 @@ export default class WebcamClient {
 
             // 'now' and 'metadata' are provided by the browser API
             const process = (now: number, metadata: VideoFrameCallbackMetadata) => {
-                if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
+                if (!this.isRunning || !this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
 
                 const imageData = convertVideoFrameToImageData(this.videoElement);
 
@@ -89,7 +96,7 @@ export default class WebcamClient {
 
                 const imageData = convertVideoFrameToImageData(this.videoElement);
                 const now = performance.now();
-                
+
                 const context: TrackingContext = {
                     videoTime: now, // Best effort: use system time
                     systemTime: now,
