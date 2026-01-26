@@ -66,8 +66,8 @@ export default class WebcamClient {
     }
 
     private _processFrames(): void {
-        if ('requestVideoFrameCallback' in this.videoElement) { // Higher Precision for if available
-
+        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) { // Higher Precision for if available
+            console.log('Using requestVideoFrameCallback')
             // 'now' and 'metadata' are provided by the browser API
             const process = (now: number, metadata: VideoFrameCallbackMetadata) => {
                 if (!this.isRunning || !this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
