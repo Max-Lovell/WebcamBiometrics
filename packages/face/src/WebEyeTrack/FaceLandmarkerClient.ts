@@ -10,13 +10,13 @@ export default class FaceLandmarkerClient {
   }
 
   async initialize() {
-    // TODO facelandmarker is broken for vite so below is a hack to get it working
-    //https://github.com/google-ai-edge/mediapipe/issues/5257
     const filesetResolver = await FilesetResolver.forVisionTasks("/wasm");
     try {
+      // Facelandmarker is broken for vite (self.import() error) so below is a hack to get it working
+      // Noted here: https://github.com/google-ai-edge/mediapipe/issues/5257
+      // TODO: find safer fix than eval here??
       const response = await fetch(filesetResolver.wasmLoaderPath);
-      // Use indirect eval to execute the script in the global scope.
-      // This is required for the library to find the ModuleFactory.
+      // Use indirect eval to execute the script in the global scope. This is required for the library to find the ModuleFactory.
       (0, eval)(await response.text());
       // FIX: Cast to 'any' to bypass TS2790 strict check
       // delete wasmLoaderPath to trick FaceLandmarker.createFromOptions into thinking it doesn't need to load the script
