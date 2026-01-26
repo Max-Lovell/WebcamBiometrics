@@ -35,12 +35,12 @@ export default class WebEyeTrackProxy {
             // Send the frame to the worker for processing
             if (this.status === 'idle') {
               // extract the buffer to transfer ownership
-              const buffer = frame.data.buffer; // Transfer memory ownership rather than copy.
+              const buffer = frame.data.buffer; // Note: frame.data is an overview of raw memory in frame.data.buffer
 
               this.worker.postMessage({
                 type: 'step',
                 payload: { frame, context }
-              }, [buffer])
+              }, [buffer]) // Transfer memory ownership from main thread to worker (auto-populates 'frame' object), rather than copy.
             }
           });
           break;
