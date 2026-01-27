@@ -38,16 +38,23 @@ function generateSupport(
 ): { supportX: SupportX, supportY: tf.Tensor } {
 
   // Implementation for generating support samples
-  const supportX: SupportX = {
-    eyePatches: tf.stack(eyePatches.map(patch => tf.browser.fromPixels(patch)), 0).toFloat().div(tf.scalar(255.0)), // Convert ImageData to tensor
-    headVectors: tf.tensor(headVectors, [headVectors.length, 3], 'float32'),
-    faceOrigins3D: tf.tensor(faceOrigins3D, [faceOrigins3D.length, 3], 'float32')
-  };
+  return tf.tidy(() => {
+    const batchPatches = tf.stack( // creates new combined tensor from pixel tensors below
+        eyePatches.map(patch => tf.browser.fromPixels(patch)), 0) // fromPixels creates new tensor for every image patch in loop.
+        .toFloat() // toFloat, div, scalar also create intermediate tensors
+        .div(tf.scalar(255.0));
 
-  // Convert normPogs to tensor
-  const supportY = tf.tensor(normPogs, [normPogs.length, 2], 'float32');
+    const supportX: SupportX = {
+      eyePatches: batchPatches,
+      headVectors: tf.tensor(headVectors, [headVectors.length, 3], 'float32'),
+      faceOrigins3D: tf.tensor(faceOrigins3D, [faceOrigins3D.length, 3], 'float32')
+    };
 
-  return { supportX, supportY };
+    const supportY = tf.tensor(normPogs, [normPogs.length, 2], 'float32');
+
+    // Note this double casting seems a bit hacky but appeases typescript and seems to work...
+    return { supportX, supportY } as any;
+  }) as { supportX: SupportX, supportY: tf.Tensor };
 }
 
 export default class WebEyeTrack {
