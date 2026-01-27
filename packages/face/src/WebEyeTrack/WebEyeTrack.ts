@@ -307,7 +307,10 @@ export default class WebEyeTrack {
     // innerLR: number = 1e-5, // Removed as hardcoded class instance of optimiser
     ptType: 'calib' | 'click' = 'calib'
   ) {
-
+    // Check memory freed up with logs of tf.memory() - must do numClicks first
+    console.log(`nClicks: ${this.calibData.supportX.length+1} of max ${this.maxPoints}`)
+    let mem = tf.memory();
+    console.log(`Start Adapt(): Tensors: ${mem.numTensors}, Memory: ${(mem.numBytes / 1024 / 1024).toFixed(2)} MB`);
     // Prune old calibration data
     this.pruneCalibData();
     // Prepare the inputs
@@ -408,6 +411,9 @@ export default class WebEyeTrack {
       // If using local optimizer, dispose here to prevent leaking momentum tensors
       // optimizer.dispose();
     }
+    mem = tf.memory();
+    console.log(`Finished Adapt(): Tensors: ${mem.numTensors}, Memory: ${(mem.numBytes / 1024 / 1024).toFixed(2)} MB`);
+
   }
 
   async step(frame: ImageData, timestamp: number): Promise<GazeResult> {
