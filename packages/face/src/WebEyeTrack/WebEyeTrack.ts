@@ -306,7 +306,6 @@ export default class WebEyeTrack {
 
     // Prune old calibration data
     this.pruneCalibData();
-
     // Prepare the inputs
     const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
     let { supportX, supportY } = generateSupport(
@@ -327,13 +326,18 @@ export default class WebEyeTrack {
     let tfHeadVectors: tf.Tensor;
     let tfFaceOrigins3D: tf.Tensor;
     let tfSupportY: tf.Tensor;
+    let createdTemporaryTensors = false;
+
     if (this.calibData.supportX.length > 1) {
+      // Note tf.concat clones into new memory so must cleanup after they are used
       tfEyePatches = tf.concat(this.calibData.supportX.map(s => s.eyePatches), 0);
       tfHeadVectors = tf.concat(this.calibData.supportX.map(s => s.headVectors), 0);
       tfFaceOrigins3D = tf.concat(this.calibData.supportX.map(s => s.faceOrigins3D), 0);
       tfSupportY = tf.concat(this.calibData.supportY, 0);
+      createdTemporaryTensors = true;
     } else {
       // If there is no prior calibration data, we use the current supportX and supportY
+      // Note these references are borrowed and not destroyed
       tfEyePatches = supportX.eyePatches;
       tfHeadVectors = supportX.headVectors;
       tfFaceOrigins3D = supportX.faceOrigins3D;
@@ -341,40 +345,53 @@ export default class WebEyeTrack {
     }
 
     // Perform a single forward pass to compute an affine transformation
-    if (tfEyePatches.shape[0] > 3) {
-      const supportPreds = tf.tidy(() => {
-        return this.blazeGaze.predict(
-          tfEyePatches,
-          tfHeadVectors,
-          tfFaceOrigins3D
-        );
-      })
-      const supportPredsNumber = supportPreds.arraySync() as number[][];
-      const supportYNumber = tfSupportY.arraySync() as number[][];
-      const affineMatrixML = computeAffineMatrixML(
-        supportPredsNumber,
-        supportYNumber
-      )
-      this.affineMatrix = tf.tensor2d(affineMatrixML, [2, 3], 'float32');
-    }
+    try {
+      if (tfEyePatches.shape[0] > 3) {
+        const supportPreds = tf.tidy(() => {
+          return this.blazeGaze.predict(
+              tfEyePatches,
+              tfHeadVectors,
+              tfFaceOrigins3D
+          );
+        })
+        const supportPredsNumber = supportPreds.arraySync() as number[][];
+        // Memory leak fix
+        supportPreds.dispose(); // Explicitly dispose the result of tidy block if not returned
+        const supportYNumber = tfSupportY.arraySync() as number[][];
+        const affineMatrixML = computeAffineMatrixML(
+            supportPredsNumber,
+            supportYNumber
+        )
 
-    tf.tidy(() => {
-      for (let i = 0; i < stepsInner; i++) {
-        const { grads, value: loss } = tf.variableGrads(() => {
-          const preds = this.blazeGaze.predict(tfEyePatches, tfHeadVectors, tfFaceOrigins3D);
-          const predsTransformed = this.affineMatrix ? applyAffineMatrix(this.affineMatrix, preds) : preds;
-          const loss = tf.losses.meanSquaredError(tfSupportY, predsTransformed);
-          return loss.asScalar();
-        });
+        // Memory leak fix
+        // dispose of old affine matrix
+        if (this.affineMatrix) this.affineMatrix.dispose();
 
-        // Apply grads manually
-        // @ts-ignore
-        opt.applyGradients(grads);
-
-        // Optionally log
-        loss.data().then(val => console.log(`Loss = ${val[0].toFixed(4)}`));
+        this.affineMatrix = tf.tensor2d(affineMatrixML, [2, 3], 'float32');
       }
-    });
+
+      tf.tidy(() => {
+        for (let i = 0; i < stepsInner; i++) {
+          const {grads, value: loss} = tf.variableGrads(() => {
+            const preds = this.blazeGaze.predict(tfEyePatches, tfHeadVectors, tfFaceOrigins3D);
+            const predsTransformed = this.affineMatrix ? applyAffineMatrix(this.affineMatrix, preds) : preds;
+            const loss = tf.losses.meanSquaredError(tfSupportY, predsTransformed);
+            return loss.asScalar();
+          });
+
+          // Optionally log
+          loss.data().then(val => console.log(`Loss = ${val[0].toFixed(4)}`));
+        }
+      });
+    } finally {
+      // Clean up temporary concat copies
+      if (createdTemporaryTensors) {
+        tfEyePatches.dispose();
+        tfHeadVectors.dispose();
+        tfFaceOrigins3D.dispose();
+        tfSupportY.dispose();
+      }
+    }
   }
 
   async step(frame: ImageData, timestamp: number): Promise<GazeResult> {
