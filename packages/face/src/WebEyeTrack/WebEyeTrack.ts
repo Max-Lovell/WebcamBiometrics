@@ -118,29 +118,65 @@ export default class WebEyeTrack {
   }
 
   pruneCalibData() {
-
     // Prune the calibration data to keep only the last maxPoints points
-    tf.tidy(() => {
-      if (this.calibData.supportX.length > this.maxPoints) {
-        this.calibData.supportX = this.calibData.supportX.slice(-this.maxPoints);
-        this.calibData.supportY = this.calibData.supportY.slice(-this.maxPoints);
-        this.calibData.timestamps = this.calibData.timestamps.slice(-this.maxPoints);
-        this.calibData.ptType = this.calibData.ptType.slice(-this.maxPoints);
+    // NOTE: tf.tidy won't clean up this.calibData, and tensors removed by slice() remain in memory.
+    // Below is rewritten to allocate the items to remove, rather than keep, so they can be .dispose()ed
+
+    // MAX POINTS -----
+    const totalPoints = this.calibData.supportX.length;
+    if (totalPoints > this.maxPoints) {
+      const numToRemove = totalPoints - this.maxPoints;
+      const toRemoveX = this.calibData.supportX.slice(0, numToRemove);
+      const toRemoveY = this.calibData.supportY.slice(0, numToRemove);
+      toRemoveX.forEach(s => {
+        s.eyePatches.dispose(); // .dispose() only available on tensor arrays directly, not in forEach on object
+        s.headVectors.dispose();
+        s.faceOrigins3D.dispose();
+      });
+      toRemoveY.forEach(t => t.dispose());
+
+      // Update state
+      this.calibData.supportX = this.calibData.supportX.slice(numToRemove);
+      this.calibData.supportY = this.calibData.supportY.slice(numToRemove);
+      this.calibData.timestamps = this.calibData.timestamps.slice(numToRemove);
+      this.calibData.ptType = this.calibData.ptType.slice(numToRemove);
+    }
+
+
+    // CLICK TTL -----
+    // Apply time-to-live pruning for 'click' points
+    const currentTime = Date.now();
+    const ttl = this.clickTTL * 1000; // Convert seconds to milliseconds
+
+    // Reconstruct arrays
+    const newSupportX: SupportX[] = [];
+    const newSupportY: tf.Tensor[] = [];
+    const newTimestamps: number[] = [];
+    const newPtType: ('calib' | 'click')[] = [];
+
+    for (let i = 0; i < this.calibData.timestamps.length; i++) {
+      const timestamp = this.calibData.timestamps[i];
+      const type = this.calibData.ptType[i];
+
+      const shouldKeep = (currentTime - timestamp <= ttl || type !== 'click');
+
+      if (shouldKeep) {
+        newSupportX.push(this.calibData.supportX[i]);
+        newSupportY.push(this.calibData.supportY[i]);
+        newTimestamps.push(timestamp);
+        newPtType.push(type);
+      } else {
+        // DISPOSE expired click data
+        this.calibData.supportX[i].eyePatches.dispose();
+        this.calibData.supportX[i].headVectors.dispose();
+        this.calibData.supportX[i].faceOrigins3D.dispose();
+        this.calibData.supportY[i].dispose();
       }
-
-      // Apply time-to-live pruning for 'click' points
-      const currentTime = Date.now();
-      const ttl = this.clickTTL * 1000; // Convert seconds to milliseconds
-
-      // Filter all together
-      const filteredIndices = this.calibData.timestamps.map((timestamp, index) => {
-        return (currentTime - timestamp <= ttl || this.calibData.ptType[index] !== 'click') ? index : -1;
-      }).filter(index => index !== -1);
-      this.calibData.supportX = filteredIndices.map(index => this.calibData.supportX[index]);
-      this.calibData.supportY = filteredIndices.map(index => this.calibData.supportY[index]);
-      this.calibData.timestamps = filteredIndices.map(index => this.calibData.timestamps[index]);
-      this.calibData.ptType = filteredIndices.map(index => this.calibData.ptType[index]);
-    })
+    }
+    this.calibData.supportX = newSupportX;
+    this.calibData.supportY = newSupportY;
+    this.calibData.timestamps = newTimestamps;
+    this.calibData.ptType = newPtType;
   }
 
   handleClick(x: number, y: number) {
