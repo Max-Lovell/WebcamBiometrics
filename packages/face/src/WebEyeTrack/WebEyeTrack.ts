@@ -70,6 +70,7 @@ export default class WebEyeTrack {
   private intrinsicsMatrix: Matrix = new Matrix(3, 3);
   private affineMatrix: tf.Tensor | null = null;
   private kalmanFilter: KalmanFilter2D;
+  private optimizer: tf.Optimizer; // Note remove if using non-global optimizer (see adapt function comments)
 
   // Public variables
   public loaded: boolean = false;
@@ -107,8 +108,11 @@ export default class WebEyeTrack {
     this.maxPoints = maxPoints;
     this.clickTTL = clickTTL;
 
-    // CHANGED add model url
+    // Add modelURL backup
     this.modelUrl = modelUrl || 'https://cdn.jsdelivr.net/gh/brownhci/WebEyeTrack@main/web/model.json'
+    // Note remove if using non-global optimizer (see adapt function comments)
+    this.optimizer = tf.train.adam(1e-5, 0.85, 0.9, 1e-8);
+
   }
 
   async initialize(): Promise<void> {
@@ -300,14 +304,14 @@ export default class WebEyeTrack {
     faceOrigins3D: number[][],
     normPogs: number[][],
     stepsInner: number = 1,
-    innerLR: number = 1e-5,
+    // innerLR: number = 1e-5, // Removed as hardcoded class instance of optimiser
     ptType: 'calib' | 'click' = 'calib'
   ) {
 
     // Prune old calibration data
     this.pruneCalibData();
     // Prepare the inputs
-    const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
+    // const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8); // note innerLR isn't changed anywhere in the code.
     let { supportX, supportY } = generateSupport(
       eyePatches,
       headVectors,
@@ -344,6 +348,11 @@ export default class WebEyeTrack {
       tfSupportY = supportY;
     }
 
+    // Note: Create optimizer locally to match original behavior --- resets momentum.
+      // MUST change all `this.optimizer` to just `optimizer` if wanting to reset
+      // Initialising in constructor makes persistent and preserves momentum
+    // const optimizer = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
+
     // Perform a single forward pass to compute an affine transformation
     try {
       if (tfEyePatches.shape[0] > 3) {
@@ -379,6 +388,10 @@ export default class WebEyeTrack {
             return loss.asScalar();
           });
 
+          // Apply grads manually
+          // @ts-ignore
+          this.optimizer.applyGradients(grads);
+
           // Optionally log
           loss.data().then(val => console.log(`Loss = ${val[0].toFixed(4)}`));
         }
@@ -391,6 +404,9 @@ export default class WebEyeTrack {
         tfFaceOrigins3D.dispose();
         tfSupportY.dispose();
       }
+
+      // If using local optimizer, dispose here to prevent leaking momentum tensors
+      // optimizer.dispose();
     }
   }
 
