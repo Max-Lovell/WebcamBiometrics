@@ -53,8 +53,8 @@ function generateSupport(
     const supportY = tf.tensor(normPogs, [normPogs.length, 2], 'float32');
 
     // Note this double casting seems a bit hacky but appeases typescript and seems to work...
-    return { supportX, supportY } as any;
-  }) as { supportX: SupportX, supportY: tf.Tensor };
+    return { supportX, supportY } as any; // ScopeFn<TensorContainer> requirement
+  }) as { supportX: SupportX, supportY: tf.Tensor }; // restore strict typing
 }
 
 export default class WebEyeTrack {

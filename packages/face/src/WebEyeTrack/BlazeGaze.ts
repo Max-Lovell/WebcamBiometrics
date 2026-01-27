@@ -37,16 +37,17 @@ export default class BlazeGaze {
         if (!this.model) {
             throw new Error('Model not loaded. Call loadModel() first.');
         }
-
         const inputList: tf.Tensor[] = [image, head_vector, face_origin_3d];
-
-        // Run inference
         const output = this.model.predict(inputList) as tf.Tensor | tf.Tensor[];  // GraphModel always returns Tensor or Tensor[]
-
         if (Array.isArray(output)) {
             return output[0];  // Return the first tensor if multiple
         }
-
         return output;
+        // Note - this .tidy is handled in webeyetrack technically
+        // return tf.tidy(() => { // Wrap in tidy to clean up inputList from memory
+        //     // Run inference
+        //     const output = this.model!.predict([image, head_vector, face_origin_3d]) as tf.Tensor;
+        //     return Array.isArray(output) ? output[0] : output;  // GraphModel always returns Tensor or Tensor[]
+        // });
     }
 }
