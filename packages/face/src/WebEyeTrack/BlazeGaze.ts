@@ -50,4 +50,11 @@ export default class BlazeGaze {
         //     return Array.isArray(output) ? output[0] : output;  // GraphModel always returns Tensor or Tensor[]
         // });
     }
+
+    dispose(): void {
+        if (this.model) {
+            this.model.dispose();
+            this.model = null;
+        }
+    }
 }

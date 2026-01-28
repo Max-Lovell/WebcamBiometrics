@@ -45,4 +45,11 @@ export default class FaceLandmarkerClient {
 
     return this.faceLandmarker.detectForVideo(frame, timestamp);
   }
+
+  dispose(): void {
+    if (this.faceLandmarker) {
+      this.faceLandmarker.close();
+      this.faceLandmarker = null;
+    }
+  }
 }

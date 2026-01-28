@@ -109,4 +109,8 @@ export default class WebcamClient {
             requestAnimationFrame(process);
         }
     }
+
+    dispose(): void {
+        this.stopWebcam();
+    }
 }
