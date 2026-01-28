@@ -1,4 +1,4 @@
-import { FaceLandmarkerResult, NormalizedLandmark, Matrix as MediaPipeMatrix } from "@mediapipe/tasks-vision";
+import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import * as tf from '@tensorflow/tfjs';
 import { Matrix } from 'ml-matrix';
 
