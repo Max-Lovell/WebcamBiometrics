@@ -154,7 +154,7 @@ export default class WebcamClient {
 
         // Handle invalid dimensions (video not ready)
         if (width === 0 || height === 0) {
-            throw new Error('Video frame has invalid dimensions. Video may not be ready.');
+            return new ImageData(1, 1); // Return empty safety dummy
         }
 
         // Create canvas only once or when dimensions change
