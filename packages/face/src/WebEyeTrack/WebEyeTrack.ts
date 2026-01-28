@@ -611,7 +611,7 @@ export default class WebEyeTrack {
 
   async step(frame: ImageData, timestamp: number): Promise<GazeResult> {
     const tic1 = performance.now();
-    let result = await this.faceLandmarkerClient.processFrame(frame) as FaceLandmarkerResult | null;
+    let result = await this.faceLandmarkerClient.processFrame(frame, timestamp) as FaceLandmarkerResult | null;
     const tic2 = performance.now();
     // result = null; // For testing purposes, we can set result to null to simulate no face detected
     if (!result || !result.faceLandmarks || result.faceLandmarks.length === 0) {
