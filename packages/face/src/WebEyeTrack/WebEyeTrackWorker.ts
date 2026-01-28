@@ -1,53 +1,30 @@
 // C.F. https://github.com/google-ai-edge/mediapipe/issues/5257
 
 import WebEyeTrack from './WebEyeTrack';
-import type { TrackingContext } from './types';
-import { extractAverageRGB } from '@webcambiometrics/vitals'; // Import the decoupled logic
+// import type { TrackingContext } from './types';
 import { FACE_ROIS } from './utils/roiUtils';
+import { HeartRateEstimator } from '@webcambiometrics/vitals';
 
 let tracker: WebEyeTrack;
 
-type InitMessage = {
-  type: 'init';
-  payload: {
-    maxPoints?: number;
-    clickTTL?: number;
-    modelUrl?: string;
-  };
-};
+// Instantiate heart rate estimator in global scope
+const foreheadEstimator = new HeartRateEstimator(10);
 
-type StepMessage = {
-  type: 'step';
-  payload: {
-    frame: ImageData;
-    context: TrackingContext;
-  };
-};
 
-type ClickMessage = {
-  type: 'click';
-  payload: {
-    x: number;
-    y: number;
-  };
-};
-
-type WorkerMessage = InitMessage | StepMessage | ClickMessage;
-
-// const ctx: Worker = self as any;
 let status: 'idle' | 'inference' | 'calib' = 'idle';
-// let lastTimestamp: number | null = null;
 
 self.onmessage = async (e: MessageEvent) => {
-  const data = e.data as WorkerMessage;
+  const { type, payload } = e.data;
 
-  switch (data.type) {
+  switch (type) {
     case 'init':
       tracker = new WebEyeTrack(
-          data.payload.maxPoints,
-          data.payload.clickTTL,
+          payload?.maxPoints,        // backward compat
+          payload?.clickTTL,
+          payload?.maxCalibPoints,   // new dual-buffer config
+          payload?.maxClickPoints    // new dual-buffer config
       );
-      await tracker.initialize();
+      await tracker.initialize(payload?.modelPath);
       self.postMessage({ type: 'ready' });
       status = 'idle';
       break;
@@ -57,33 +34,41 @@ self.onmessage = async (e: MessageEvent) => {
 
         status = 'inference';
         self.postMessage({ type: 'statusUpdate', status: status});
-        const { frame, context } = data.payload;
+        const { frame, context } = payload;
 
         const gazeResult = await tracker.step(frame, context.videoTime);
-        console.log('gazeResult', gazeResult);
+        // console.log('gazeResult', gazeResult);
         // add rPPG
         let vitalsResult = null;
         if (gazeResult.facialLandmarks && gazeResult.facialLandmarks.length > 0) {
-          // Helper to convert normalized landmarks to pixels
-          // (We might need to expose a helper for this or do it inline)
-          const w = frame.width;
-          const h = frame.height;
-          const getPoints = (indices: number[]) => indices.map(i => ({
-            x: gazeResult.facialLandmarks[i].x * w,
-            y: gazeResult.facialLandmarks[i].y * h
-          }));
+          // Convert ROI indices to Pixel Coordinates
+          // gazeResult.facialLandmarks are normalized (0.0 - 1.0)
+          const foreheadPoints = FACE_ROIS.forehead.map((index: number) => {
+            const landmark = gazeResult.facialLandmarks[index];
+            return {
+              x: landmark.x * frame.width,  // Scale to pixels
+              y: landmark.y * frame.height
+            };
+          });
 
-          vitalsResult = {
-            forehead: extractAverageRGB(frame, getPoints(FACE_ROIS.forehead), context.videoTime),
-            leftCheek: extractAverageRGB(frame, getPoints(FACE_ROIS.leftCheek), context.videoTime),
-            rightCheek: extractAverageRGB(frame, getPoints(FACE_ROIS.rightCheek), context.videoTime),
-          };
+          // 3. Process the frame using the persistent estimator
+          vitalsResult = foreheadEstimator.processFrame(
+              frame,
+              foreheadPoints,
+              context.videoTime
+          );
         }
         // Attach context to result so main thread can log
-        (gazeResult as any).context = context;
         const finalResult = {
           ...gazeResult,
-          roiSignals: vitalsResult
+          // Attach context so main thread can log it
+          context: context,
+          // Default to 0s if no face detected or buffer not full
+          vitals: {
+            bpm: vitalsResult ? vitalsResult.bpm : 0,
+            wave: vitalsResult ? vitalsResult.signal : 0,
+            confidence: vitalsResult ? vitalsResult.confidence : 0
+          }
         };
         self.postMessage({ type: 'stepResult', result: finalResult });
 
@@ -97,14 +82,67 @@ self.onmessage = async (e: MessageEvent) => {
       status = 'calib';
       self.postMessage({ type: 'statusUpdate', status: status});
 
-      tracker.handleClick(data.payload.x, data.payload.y);
+      tracker.handleClick(payload.x, payload.y);
 
       status = 'idle';
       self.postMessage({ type: 'statusUpdate', status: status});
       break;
 
+    case 'adapt':
+      // Handle manual calibration MAML adaptation
+      status = 'calib';
+      self.postMessage({ type: 'statusUpdate', status: status});
+
+      try {
+        tracker.adapt(
+            payload.eyePatches,
+            payload.headVectors,
+            payload.faceOrigins3D,
+            payload.normPogs,
+            payload.stepsInner,
+            payload.innerLR,
+            payload.ptType
+        );
+        self.postMessage({ type: 'adaptComplete', success: true });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Adaptation failed';
+        self.postMessage({ type: 'adaptComplete', success: false, error: errorMessage });
+      }
+
+      status = 'idle';
+      self.postMessage({ type: 'statusUpdate', status: status});
+      break;
+
+    case 'clearCalibration':
+      // Clear calibration buffer for re-calibration
+      if (tracker) {
+        tracker.clearCalibrationBuffer();
+      }
+      break;
+
+    case 'clearClickstream':
+      // Clear clickstream buffer while preserving calibration
+      if (tracker) {
+        tracker.clearClickstreamPoints();
+      }
+      break;
+
+    case 'resetAllBuffers':
+      // Reset both calibration and clickstream buffers
+      if (tracker) {
+        tracker.resetAllBuffers();
+      }
+      break;
+
+    case 'dispose':
+      // Clean up tracker resources before worker termination
+      if (tracker) {
+        tracker.dispose();
+      }
+      break;
+
     default:
-      console.warn(`[WebEyeTrackWorker] Unknown message data: ${data}`);
+      console.warn(`[WebEyeTrackWorker] Unknown message data: Type: ${type}, Payload: ${payload}`);
       break;
   }
 };

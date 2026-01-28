@@ -4,7 +4,7 @@ import type {GazeResult, TrackingContext} from "./types";
 interface TrackerConfig {
   maxPoints?: number;
   clickTTL?: number;
-  modelUrl?: string;
+  modelPath?: string;
 }
 
 // import WebEyeTrackWorker from "worker-loader?inline=no-fallback!./WebEyeTrackWorker.ts";
