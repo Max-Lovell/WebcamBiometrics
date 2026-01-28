@@ -46,7 +46,6 @@ self.onmessage = async (e: MessageEvent) => {
       tracker = new WebEyeTrack(
           data.payload.maxPoints,
           data.payload.clickTTL,
-          data.payload.modelUrl
       );
       await tracker.initialize();
       self.postMessage({ type: 'ready' });
