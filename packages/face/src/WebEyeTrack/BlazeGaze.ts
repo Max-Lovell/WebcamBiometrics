@@ -6,6 +6,7 @@ import * as tf from '@tensorflow/tfjs';
 export default class BlazeGaze {
     // private model: tf.GraphModel | null = null;
     private model: tf.LayersModel | null = null;  // Use LayersModel for tf.loadLayersModel
+    private _disposed: boolean = false;
 
     // CHANGED to add model URL property
     private modelUrl: string;
@@ -52,6 +53,8 @@ export default class BlazeGaze {
     }
 
     dispose(): void {
+        if (this._disposed) return
+        
         if (this.model) {
             this.model.dispose();
             this.model = null;
