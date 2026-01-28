@@ -14,6 +14,8 @@ export default class WebEyeTrackProxy {
   private worker: Worker;
   private clickHandler: ((e: MouseEvent) => void) | null = null;
   private messageHandler: ((e: MessageEvent) => void) | null = null;
+  private adaptResolve: (() => void) | null = null;
+  private adaptReject: ((error: Error) => void) | null = null;
 
   public status: 'idle' | 'inference' | 'calib' = 'idle';
 
@@ -54,6 +56,25 @@ export default class WebEyeTrackProxy {
 
         case 'statusUpdate':
           this.status = mess.data.status;
+          break;
+
+        case 'adaptComplete':
+          // Handle adaptation completion
+          if (mess.data.success) {
+            console.log('[WebEyeTrackProxy] Adaptation completed successfully');
+          } else {
+            console.error('[WebEyeTrackProxy] Adaptation failed:', mess.data.error);
+          }
+          // Resolve promise if we stored it
+          if (this.adaptResolve && this.adaptReject) {
+            if (mess.data.success) {
+              this.adaptResolve();
+            } else {
+              this.adaptReject(new Error(mess.data.error));
+            }
+            this.adaptResolve = null;
+            this.adaptReject = null;
+          }
           break;
 
         default:
