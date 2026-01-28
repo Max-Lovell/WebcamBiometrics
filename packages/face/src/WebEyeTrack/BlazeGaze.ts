@@ -47,11 +47,19 @@ export default class BlazeGaze {
     }
 
     dispose(): void {
-        if (this._disposed) return
-        
+        if (this._disposed) {
+            return;
+        }
+
         if (this.model) {
             this.model.dispose();
             this.model = null;
         }
+
+        this._disposed = true;
+    }
+
+    get isDisposed(): boolean {
+        return this._disposed;
     }
 }
