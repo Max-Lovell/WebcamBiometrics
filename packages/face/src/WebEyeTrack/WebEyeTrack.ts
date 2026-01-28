@@ -392,7 +392,6 @@ export default class WebEyeTrack {
           });
 
           // Apply grads manually
-          // @ts-ignore
           this.optimizer.applyGradients(grads);
 
           // Optionally log
