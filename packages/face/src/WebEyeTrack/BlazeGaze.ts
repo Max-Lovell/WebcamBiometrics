@@ -8,18 +8,12 @@ export default class BlazeGaze {
     private model: tf.LayersModel | null = null;  // Use LayersModel for tf.loadLayersModel
     private _disposed: boolean = false;
 
-    // CHANGED to add model URL property
-    private modelUrl: string;
-
-    // CHANGED to add accept config
-    constructor(modelUrl?: string) {
-        // Default to a CDN if no local path is provided
-        this.modelUrl = modelUrl || 'https://cdn.jsdelivr.net/gh/brownhci/WebEyeTrack@main/web/model.json';
+    constructor() {
     }
 
-    async loadModel(): Promise<void> {
-        // CHANGED to use variable
-        const path = this.modelUrl;
+    async loadModel(modelPath?: string): Promise<void> {
+        // CDN path if needed: 'https://cdn.jsdelivr.net/gh/RedForestAI/WebEyeTrack@main/js/examples/demo-app/public/web/model.json';
+        const path = modelPath || `${self.location.origin}/public/models/model.json`;
         try {
             // Load model from local directory (adjust path if needed)
             this.model = await tf.loadLayersModel(path);
