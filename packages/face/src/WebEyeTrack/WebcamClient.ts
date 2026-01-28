@@ -10,6 +10,7 @@ export default class WebcamClient {
     private loadedDataHandler: (() => void) | null = null;
     private animationFrameId: number | null = null;
     private videoFrameId: number | null = null;
+    private _disposed: boolean = false;
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -144,5 +145,11 @@ export default class WebcamClient {
 
     dispose(): void {
         this.stopWebcam();
+
+        this._disposed = true;
+    }
+
+    get isDisposed(): boolean {
+        return this._disposed;
     }
 }
