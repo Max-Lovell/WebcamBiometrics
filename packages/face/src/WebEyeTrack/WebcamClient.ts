@@ -18,6 +18,12 @@ export default class WebcamClient {
     }
 
     async startWebcam(frameCallback?: (frame: ImageData, context: TrackingContext) => Promise<void>): Promise<void> {
+        // Guard against double run of stream
+        if (this.isRunning || this.stream) {
+            console.warn("Webcam is already running or starting.");
+            return;
+        }
+
         try {
             const constraints: MediaStreamConstraints = {
                 video: { // TODO: check these constraints
@@ -50,6 +56,9 @@ export default class WebcamClient {
             this.videoElement.addEventListener('loadeddata', this.loadedDataHandler);
 
         } catch (error) {
+            // Reset state on failure so the user can try again
+            this.isRunning = false;
+            this.stream = undefined;
             console.error("Error accessing the webcam:", error);
         }
     }
