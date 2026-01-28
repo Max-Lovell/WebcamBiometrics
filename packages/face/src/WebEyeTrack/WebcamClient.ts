@@ -8,6 +8,8 @@ export default class WebcamClient {
     private fallbackFrameCount = 0;
     private isRunning: boolean = false; // Flag to kill the loop
     private loadedDataHandler: (() => void) | null = null;
+    private animationFrameId: number | null = null;
+    private videoFrameId: number | null = null;
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -41,12 +43,12 @@ export default class WebcamClient {
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.videoElement.srcObject = this.stream;
             this.isRunning = true;
-            this.loadedDataHandler = () => this._processFrames();
 
             // Set the callback if provided
             if (frameCallback) {
                 this.frameCallback = frameCallback;
             }
+            this.loadedDataHandler = () => this._processFrames();
 
             // Start video playback
             this.videoElement.onloadedmetadata = () => {
@@ -66,6 +68,17 @@ export default class WebcamClient {
     stopWebcam(): void {
         this.isRunning = false; // Stop the rvfc/raf loop
 
+        // Cancel pending frame
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        if (this.videoFrameId !== null) {
+            this.videoElement.cancelVideoFrameCallback(this.videoFrameId);
+            this.videoFrameId = null;
+        }
+
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = undefined;
@@ -84,7 +97,10 @@ export default class WebcamClient {
             console.log('Using requestVideoFrameCallback')
             // 'now' and 'metadata' are provided by the browser API
             const process = (now: number, metadata: VideoFrameCallbackMetadata) => {
-                if (!this.isRunning || !this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
+                if (!this.isRunning || !this.videoElement || this.videoElement.paused || this.videoElement.ended) {
+                    this.videoFrameId = null;
+                    return;
+                }
 
                 const imageData = convertVideoFrameToImageData(this.videoElement);
 
@@ -96,16 +112,19 @@ export default class WebcamClient {
                 };
 
                 if (this.frameCallback) void this.frameCallback(imageData, context);
-                this.videoElement.requestVideoFrameCallback(process);
+                this.videoFrameId = this.videoElement.requestVideoFrameCallback(process);
             };
 
-            this.videoElement.requestVideoFrameCallback(process);
+            this.videoFrameId = this.videoElement.requestVideoFrameCallback(process);
 
         } else { // Fallback (Firefox, Safari)
             console.warn("requestVideoFrameCallback missing. Falling back to requestAnimationFrame.");
 
             const process = () => {
-                if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) return;
+                if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) {
+                    this.animationFrameId = null;
+                    return;
+                }
 
                 const imageData = convertVideoFrameToImageData(this.videoElement);
                 const now = performance.now();
@@ -117,9 +136,9 @@ export default class WebcamClient {
                 };
 
                 if (this.frameCallback) void this.frameCallback(imageData, context);
-                requestAnimationFrame(process);
+                this.animationFrameId = requestAnimationFrame(process);
             }
-            requestAnimationFrame(process);
+            this.animationFrameId = requestAnimationFrame(process);
         }
     }
 
