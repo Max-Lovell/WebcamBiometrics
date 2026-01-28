@@ -1,25 +1,24 @@
-import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
-//import { FaceLandmarkerResult, NormalizedLandmark, Matrix as MediaPipeMatrix } from "@mediapipe/tasks-vision";
+import { FaceLandmarkerResult, NormalizedLandmark, Matrix as MediaPipeMatrix } from "@mediapipe/tasks-vision";
 import * as tf from '@tensorflow/tfjs';
-import {Matrix} from 'ml-matrix';
+import { Matrix } from 'ml-matrix';
 
-import type {GazeResult, Point} from "./types";
+import type {Point, GazeResult} from "./types";
 import BlazeGaze from "./BlazeGaze";
 import FaceLandmarkerClient from "./FaceLandmarkerClient";
 import {
-  applyAffineMatrix,
-  computeAffineMatrixML,
-  computeEAR,
   computeFaceOrigin3D,
   createIntrinsicsMatrix,
   createPerspectiveMatrix,
-  estimateFaceWidth,
+  translateMatrix,
   faceReconstruction,
+  estimateFaceWidth,
   getHeadVector,
   obtainEyePatch,
-  translateMatrix
+  computeEAR,
+  computeAffineMatrixML,
+  applyAffineMatrix
 } from "./utils/mathUtils";
-import {KalmanFilter2D} from "./utils/filter";
+import { KalmanFilter2D } from "./utils/filter";
 
 // Reference
 // https://mediapipe-studio.webapps.google.com/demo/face_landmarker
@@ -38,23 +37,16 @@ function generateSupport(
 ): { supportX: SupportX, supportY: tf.Tensor } {
 
   // Implementation for generating support samples
-  return tf.tidy(() => {
-    const batchPatches = tf.stack( // creates new combined tensor from pixel tensors below
-        eyePatches.map(patch => tf.browser.fromPixels(patch)), 0) // fromPixels creates new tensor for every image patch in loop.
-        .toFloat() // toFloat, div, scalar also create intermediate tensors
-        .div(tf.scalar(255.0));
+  const supportX: SupportX = {
+    eyePatches: tf.stack(eyePatches.map(patch => tf.browser.fromPixels(patch)), 0).toFloat().div(tf.scalar(255.0)), // Convert ImageData to tensor
+    headVectors: tf.tensor(headVectors, [headVectors.length, 3], 'float32'),
+    faceOrigins3D: tf.tensor(faceOrigins3D, [faceOrigins3D.length, 3], 'float32')
+  };
 
-    const supportX: SupportX = {
-      eyePatches: batchPatches,
-      headVectors: tf.tensor(headVectors, [headVectors.length, 3], 'float32'),
-      faceOrigins3D: tf.tensor(faceOrigins3D, [faceOrigins3D.length, 3], 'float32')
-    };
+  // Convert normPogs to tensor
+  const supportY = tf.tensor(normPogs, [normPogs.length, 2], 'float32');
 
-    const supportY = tf.tensor(normPogs, [normPogs.length, 2], 'float32');
-
-    // Note this double casting seems a bit hacky but appeases typescript and seems to work...
-    return { supportX, supportY } as any; // ScopeFn<TensorContainer> requirement
-  }) as { supportX: SupportX, supportY: tf.Tensor }; // restore strict typing
+  return { supportX, supportY };
 }
 
 export default class WebEyeTrack {
@@ -70,117 +62,267 @@ export default class WebEyeTrack {
   private intrinsicsMatrix: Matrix = new Matrix(3, 3);
   private affineMatrix: tf.Tensor | null = null;
   private kalmanFilter: KalmanFilter2D;
-  private optimizer: tf.Optimizer; // Note remove if using non-global optimizer (see adapt function comments)
+  private _disposed: boolean = false;
 
   // Public variables
   public loaded: boolean = false;
   public latestMouseClick: { x: number, y: number, timestamp: number } | null = null;
   public latestGazeResult: GazeResult | null = null;
+
+  // Separate buffers for calibration (persistent) vs clickstream (ephemeral) points
   public calibData: {
-    supportX: SupportX[],
-    supportY: tf.Tensor[],
-    timestamps: number[],
-    ptType: ('calib' | 'click')[]
+    // === PERSISTENT CALIBRATION BUFFER (never evicted) ===
+    calibSupportX: SupportX[],
+    calibSupportY: tf.Tensor[],
+    calibTimestamps: number[],
+
+    // === TEMPORAL CLICKSTREAM BUFFER (TTL + FIFO eviction) ===
+    clickSupportX: SupportX[],
+    clickSupportY: tf.Tensor[],
+    clickTimestamps: number[],
   } = {
-    supportX: [],
-    supportY: [],
-    timestamps: [],
-    ptType: ['calib']
+    calibSupportX: [],
+    calibSupportY: [],
+    calibTimestamps: [],
+    clickSupportX: [],
+    clickSupportY: [],
+    clickTimestamps: [],
   };
 
   // Configuration
-  public maxPoints: number = 5;
-  public clickTTL: number = 60; // Time-to-live for click points in seconds
-  public modelUrl: string; // CHANGED to add model URL property TODO: do I need this property?
+  public maxCalibPoints: number = 4;    // Max calibration points (4-point or 9-point calibration)
+  public maxClickPoints: number = 5;    // Max clickstream points (FIFO + TTL)
+  public clickTTL: number = 60;         // Time-to-live for click points in seconds
 
   constructor(
-      maxPoints: number = 5,
-      clickTTL: number = 60, // Time-to-live for click points in seconds
-      modelUrl?: string, // CHANGED accept model url
+      maxPoints: number = 5,              // Deprecated: use maxClickPoints instead
+      clickTTL: number = 60,              // Time-to-live for click points in seconds
+      maxCalibPoints?: number,            // Max calibration points (4 or 9 typically)
+      maxClickPoints?: number             // Max clickstream points
     ) {
 
     // Initialize services
-    this.blazeGaze = new BlazeGaze(modelUrl);
+    this.blazeGaze = new BlazeGaze();
     this.faceLandmarkerClient = new FaceLandmarkerClient();
     this.kalmanFilter = new KalmanFilter2D();
 
-    // Storing configs
-    this.maxPoints = maxPoints;
+    // Storing configs with backward compatibility
+    this.maxCalibPoints = maxCalibPoints ?? 4;           // Default: 4-point calibration
+    this.maxClickPoints = maxClickPoints ?? maxPoints;   // Use maxClickPoints if provided, else maxPoints
     this.clickTTL = clickTTL;
-
-    // Add modelURL backup
-    this.modelUrl = modelUrl || 'https://cdn.jsdelivr.net/gh/brownhci/WebEyeTrack@main/web/model.json'
-    // Note remove if using non-global optimizer (see adapt function comments)
-    this.optimizer = tf.train.adam(1e-5, 0.85, 0.9, 1e-8);
-
   }
 
-  async initialize(): Promise<void> {
+  async initialize(modelPath?: string): Promise<void> {
     await this.faceLandmarkerClient.initialize();
-    await this.blazeGaze.loadModel();
+    await this.blazeGaze.loadModel(modelPath);
+    await this.warmup();
     this.loaded = true;
   }
 
-  pruneCalibData() {
-    // Prune the calibration data to keep only the last maxPoints points
-    // NOTE: tf.tidy won't clean up this.calibData, and tensors removed by slice() remain in memory.
-    // Below is rewritten to allocate the items to remove, rather than keep, so they can be .dispose()ed
+  /**
+   * Pre-warms TensorFlow.js execution pipeline by running dummy forward/backward passes.
+   * This compiles WebGL shaders and optimizes computation graphs before first real usage.
+   */
+  async warmup(): Promise<void> {
+    console.log('🔥 Starting TensorFlow.js warmup...');
+    const warmupStart = performance.now();
 
-    // MAX POINTS -----
-    const totalPoints = this.calibData.supportX.length;
-    if (totalPoints > this.maxPoints) {
-      const numToRemove = totalPoints - this.maxPoints;
-      const toRemoveX = this.calibData.supportX.slice(0, numToRemove);
-      const toRemoveY = this.calibData.supportY.slice(0, numToRemove);
-      toRemoveX.forEach(s => {
-        s.eyePatches.dispose(); // .dispose() only available on tensor arrays directly, not in forEach on object
-        s.headVectors.dispose();
-        s.faceOrigins3D.dispose();
+    // Warmup iterations match total buffer capacity to exercise all code paths
+    const numWarmupIterations = this.maxCalibPoints + this.maxClickPoints;
+
+    for (let iteration = 1; iteration <= numWarmupIterations; iteration++) {
+      await tf.nextFrame(); // Yield to prevent blocking
+
+      const iterationStart = performance.now();
+
+      // Create dummy tensors matching expected shapes
+      // Eye patch: ImageData(width=512, height=128) -> tensor [batch, height, width, channels]
+      const dummyEyePatch = tf.randomUniform([1, 128, 512, 3], 0, 1); // [batch, H=128, W=512, channels]
+      const dummyHeadVector = tf.randomUniform([1, 3], -1, 1);
+      const dummyFaceOrigin3D = tf.randomUniform([1, 3], -100, 100);
+      const dummyTarget = tf.randomUniform([1, 2], -0.5, 0.5);
+
+      // Warmup forward pass
+      tf.tidy(() => {
+        this.blazeGaze.predict(dummyEyePatch, dummyHeadVector, dummyFaceOrigin3D);
       });
-      toRemoveY.forEach(t => t.dispose());
 
-      // Update state
-      this.calibData.supportX = this.calibData.supportX.slice(numToRemove);
-      this.calibData.supportY = this.calibData.supportY.slice(numToRemove);
-      this.calibData.timestamps = this.calibData.timestamps.slice(numToRemove);
-      this.calibData.ptType = this.calibData.ptType.slice(numToRemove);
-    }
+      // Warmup backward pass (gradient computation)
+      const opt = tf.train.adam(1e-5, 0.85, 0.9, 1e-8);
+      tf.tidy(() => {
+        const { grads, value: loss } = tf.variableGrads(() => {
+          const preds = this.blazeGaze.predict(dummyEyePatch, dummyHeadVector, dummyFaceOrigin3D);
+          const loss = tf.losses.meanSquaredError(dummyTarget, preds);
+          return loss.asScalar();
+        });
+        opt.applyGradients(grads as Record<string, tf.Variable>);
+      });
 
+      // Warmup affine matrix computation path (kicks in at iteration 4)
+      if (iteration >= 4) {
+        tf.tidy(() => {
+          // Simulate multiple calibration points [batch, H=128, W=512, channels]
+          const multiEyePatches = tf.randomUniform([iteration, 128, 512, 3], 0, 1);
+          const multiHeadVectors = tf.randomUniform([iteration, 3], -1, 1);
+          const multiFaceOrigins3D = tf.randomUniform([iteration, 3], -100, 100);
 
-    // CLICK TTL -----
-    // Apply time-to-live pruning for 'click' points
-    const currentTime = Date.now();
-    const ttl = this.clickTTL * 1000; // Convert seconds to milliseconds
+          const preds = this.blazeGaze.predict(multiEyePatches, multiHeadVectors, multiFaceOrigins3D);
 
-    // Reconstruct arrays
-    const newSupportX: SupportX[] = [];
-    const newSupportY: tf.Tensor[] = [];
-    const newTimestamps: number[] = [];
-    const newPtType: ('calib' | 'click')[] = [];
-
-    for (let i = 0; i < this.calibData.timestamps.length; i++) {
-      const timestamp = this.calibData.timestamps[i];
-      const type = this.calibData.ptType[i];
-
-      const shouldKeep = (currentTime - timestamp <= ttl || type !== 'click');
-
-      if (shouldKeep) {
-        newSupportX.push(this.calibData.supportX[i]);
-        newSupportY.push(this.calibData.supportY[i]);
-        newTimestamps.push(timestamp);
-        newPtType.push(type);
-      } else {
-        // DISPOSE expired click data
-        this.calibData.supportX[i].eyePatches.dispose();
-        this.calibData.supportX[i].headVectors.dispose();
-        this.calibData.supportX[i].faceOrigins3D.dispose();
-        this.calibData.supportY[i].dispose();
+          // Trigger affine transformation path
+          if (this.affineMatrix) {
+            applyAffineMatrix(this.affineMatrix, preds);
+          }
+        });
       }
+
+      // Clean up iteration tensors
+      opt.dispose();
+      tf.dispose([dummyEyePatch, dummyHeadVector, dummyFaceOrigin3D, dummyTarget]);
+
+      const iterationTime = performance.now() - iterationStart;
+      console.log(`  Iteration ${iteration}/${numWarmupIterations}: ${iterationTime.toFixed(2)}ms`);
     }
-    this.calibData.supportX = newSupportX;
-    this.calibData.supportY = newSupportY;
-    this.calibData.timestamps = newTimestamps;
-    this.calibData.ptType = newPtType;
+
+    const warmupTime = performance.now() - warmupStart;
+    console.log(`✅ TensorFlow.js warmup complete in ${warmupTime.toFixed(2)}ms`);
+    console.log(`   GPU shaders compiled, computation graphs optimized`);
+  }
+
+  /**
+   * Clears the calibration buffer and resets affine matrix.
+   * Call this when starting a new calibration session (e.g., user clicks "Calibrate" button again).
+   * Properly disposes all calibration tensors to prevent memory leaks.
+   */
+  clearCalibrationBuffer() {
+    console.log('🔄 Clearing calibration buffer for re-calibration');
+
+    // Dispose all calibration tensors
+    this.calibData.calibSupportX.forEach(item => {
+      tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
+    });
+
+    this.calibData.calibSupportY.forEach(tensor => {
+      tf.dispose(tensor);
+    });
+
+    // Clear calibration arrays
+    this.calibData.calibSupportX = [];
+    this.calibData.calibSupportY = [];
+    this.calibData.calibTimestamps = [];
+
+    // Reset affine matrix (will be recomputed with new calibration)
+    if (this.affineMatrix) {
+      tf.dispose(this.affineMatrix);
+      this.affineMatrix = null;
+    }
+
+    console.log('✅ Calibration buffer cleared');
+  }
+
+  /**
+   * Clears the clickstream buffer while preserving calibration points.
+   * Use this to remove stale clickstream data without affecting calibration.
+   * Properly disposes all clickstream tensors to prevent memory leaks.
+   *
+   * @example
+   * // Clear stale clicks while keeping calibration
+   * tracker.clearClickstreamPoints();
+   */
+  clearClickstreamPoints() {
+    console.log('🔄 Clearing clickstream buffer');
+
+    // Dispose all clickstream tensors
+    this.calibData.clickSupportX.forEach(item => {
+      tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
+    });
+
+    this.calibData.clickSupportY.forEach(tensor => {
+      tf.dispose(tensor);
+    });
+
+    // Clear clickstream arrays
+    this.calibData.clickSupportX = [];
+    this.calibData.clickSupportY = [];
+    this.calibData.clickTimestamps = [];
+
+    console.log('✅ Clickstream buffer cleared');
+  }
+
+  /**
+   * Resets both calibration and clickstream buffers for a completely fresh start.
+   * This is the recommended method to call when initiating re-calibration.
+   * Properly disposes all tensors and resets affine matrix.
+   *
+   * @example
+   * // User clicks "Recalibrate" button
+   * tracker.resetAllBuffers();
+   * tracker.adapt(...); // Start fresh calibration
+   */
+  resetAllBuffers() {
+    console.log('🔄 Resetting all buffers for re-calibration');
+    this.clearCalibrationBuffer();
+    this.clearClickstreamPoints();
+    console.log('✅ All buffers reset - ready for fresh calibration');
+  }
+
+  /**
+   * Prunes the clickstream buffer based on TTL and maxClickPoints.
+   * Calibration buffer is NEVER pruned - calibration points persist for the entire session.
+   */
+  pruneCalibData() {
+    // === CALIBRATION BUFFER: No pruning ===
+    // Calibration points are permanent and never evicted
+    // Overflow is handled in adapt() method with user-visible error
+
+    // === CLICKSTREAM BUFFER: TTL + FIFO pruning ===
+    const currentTime = Date.now();
+    const ttl = this.clickTTL * 1000;
+
+    // Step 1: Remove expired click points (TTL pruning)
+    const validIndices: number[] = [];
+    const expiredIndices: number[] = [];
+
+    this.calibData.clickTimestamps.forEach((timestamp, index) => {
+      if (currentTime - timestamp <= ttl) {
+        validIndices.push(index);
+      } else {
+        expiredIndices.push(index);
+      }
+    });
+
+    // Dispose expired tensors
+    expiredIndices.forEach(index => {
+      const item = this.calibData.clickSupportX[index];
+      tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
+      tf.dispose(this.calibData.clickSupportY[index]);
+    });
+
+    // Filter to keep only non-expired clicks
+    this.calibData.clickSupportX = validIndices.map(i => this.calibData.clickSupportX[i]);
+    this.calibData.clickSupportY = validIndices.map(i => this.calibData.clickSupportY[i]);
+    this.calibData.clickTimestamps = validIndices.map(i => this.calibData.clickTimestamps[i]);
+
+    // Step 2: Apply FIFO if still over maxClickPoints
+    if (this.calibData.clickSupportX.length > this.maxClickPoints) {
+      // Calculate how many to remove
+      const numToRemove = this.calibData.clickSupportX.length - this.maxClickPoints;
+
+      // Dispose oldest click tensors
+      const itemsToRemove = this.calibData.clickSupportX.slice(0, numToRemove);
+      itemsToRemove.forEach(item => {
+        tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
+      });
+
+      const tensorsToRemove = this.calibData.clickSupportY.slice(0, numToRemove);
+      tensorsToRemove.forEach(tensor => {
+        tf.dispose(tensor);
+      });
+
+      // Keep only last maxClickPoints
+      this.calibData.clickSupportX = this.calibData.clickSupportX.slice(-this.maxClickPoints);
+      this.calibData.clickSupportY = this.calibData.clickSupportY.slice(-this.maxClickPoints);
+      this.calibData.clickTimestamps = this.calibData.clickTimestamps.slice(-this.maxClickPoints);
+    }
   }
 
   handleClick(x: number, y: number) {
@@ -206,11 +348,15 @@ export default class WebEyeTrack {
 
     if (this.loaded && this.latestGazeResult) {
       // Adapt the model based on the click position
+      // Use Python default parameters (main.py:183-185) for click calibration
       this.adapt(
         [this.latestGazeResult?.eyePatch as ImageData],
         [this.latestGazeResult?.headVector as number[]],
         [this.latestGazeResult?.faceOrigin3D as number[]],
-        [[x, y]]
+        [[x, y]],
+        10,      // stepsInner: matches Python main.py:183
+        1e-4,    // innerLR: matches Python main.py:184
+        'click'  // ptType: matches Python main.py:185
       );
     }
   }
@@ -224,7 +370,7 @@ export default class WebEyeTrack {
     }
 
     // Perform 3D face reconstruction and determine the pose in 3d cm space
-    const [, metricFace] = faceReconstruction( //TODO is metricTransform from const [metricTransform, metricFace] needed?
+    const [metricTransform, metricFace] = faceReconstruction(
       this.perspectiveMatrix,
       normFaceLandmarks as [number, number][],
       faceRT,
@@ -236,10 +382,12 @@ export default class WebEyeTrack {
     );
 
     // Lastly, compute the gaze origins in 3D space using the metric face
-    // return faceOrigin3D;
-    return computeFaceOrigin3D(
-        metricFace
+    const faceOrigin3D = computeFaceOrigin3D(
+      metricFace
     );
+
+    // return faceOrigin3D;
+    return faceOrigin3D;
   }
 
   prepareInput(frame: ImageData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
@@ -303,121 +451,162 @@ export default class WebEyeTrack {
     headVectors: number[][],
     faceOrigins3D: number[][],
     normPogs: number[][],
-    stepsInner: number = 1,
-    // innerLR: number = 1e-5, // Removed as hardcoded class instance of optimiser
+    stepsInner: number = 5,    // Default: 5 (matches Python webeyetrack.py:324)
+    innerLR: number = 1e-5,    // Default: 1e-5 (matches Python webeyetrack.py:325)
     ptType: 'calib' | 'click' = 'calib'
   ) {
-    // Check memory freed up with logs of tf.memory() - must do numClicks first
-    console.log(`nClicks: ${this.calibData.supportX.length+1} of max ${this.maxPoints}`)
-    let mem = tf.memory();
-    console.log(`Start Adapt(): Tensors: ${mem.numTensors}, Memory: ${(mem.numBytes / 1024 / 1024).toFixed(2)} MB`);
-    // Prune old calibration data
+
+    // Prune old clickstream data (calibration buffer is never pruned)
     this.pruneCalibData();
-    // Prepare the inputs
-    // const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8); // note innerLR isn't changed anywhere in the code.
-    let { supportX, supportY } = generateSupport(
-      eyePatches,
-      headVectors,
-      faceOrigins3D,
-      normPogs
-    );
 
-    // Append the new support data to the calibration data
-    this.calibData.supportX.push(supportX);
-    this.calibData.supportY.push(supportY);
-    this.calibData.timestamps.push(Date.now());
-    this.calibData.ptType.push(ptType);
+    // Optimizer must persist across training iterations, so created outside tf.tidy()
+    // Must be explicitly disposed to prevent memory leak of internal variables
+    const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
 
-    // Now extend the supportX and supportY tensors with prior calib data
-    let tfEyePatches: tf.Tensor;
-    let tfHeadVectors: tf.Tensor;
-    let tfFaceOrigins3D: tf.Tensor;
-    let tfSupportY: tf.Tensor;
-    let createdTemporaryTensors = false;
-
-    if (this.calibData.supportX.length > 1) {
-      // Note tf.concat clones into new memory so must cleanup after they are used
-      tfEyePatches = tf.concat(this.calibData.supportX.map(s => s.eyePatches), 0);
-      tfHeadVectors = tf.concat(this.calibData.supportX.map(s => s.headVectors), 0);
-      tfFaceOrigins3D = tf.concat(this.calibData.supportX.map(s => s.faceOrigins3D), 0);
-      tfSupportY = tf.concat(this.calibData.supportY, 0);
-      createdTemporaryTensors = true;
-    } else {
-      // If there is no prior calibration data, we use the current supportX and supportY
-      // Note these references are borrowed and not destroyed
-      tfEyePatches = supportX.eyePatches;
-      tfHeadVectors = supportX.headVectors;
-      tfFaceOrigins3D = supportX.faceOrigins3D;
-      tfSupportY = supportY;
-    }
-
-    // Note: Create optimizer locally to match original behavior --- resets momentum.
-      // MUST change all `this.optimizer` to just `optimizer` if wanting to reset
-      // Initialising in constructor makes persistent and preserves momentum
-    // const optimizer = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
-
-    // Perform a single forward pass to compute an affine transformation
     try {
+      let { supportX, supportY } = generateSupport(
+        eyePatches,
+        headVectors,
+        faceOrigins3D,
+        normPogs
+      );
+
+      // === ROUTE TO APPROPRIATE BUFFER ===
+      const batchSize = supportX.eyePatches.shape[0];  // Number of points in this batch
+
+      if (ptType === 'calib') {
+        // Calculate total calibration points after adding this batch
+        const currentCalibPoints = this.calibData.calibSupportX.reduce((sum, s) => sum + s.eyePatches.shape[0], 0);
+        const newTotal = currentCalibPoints + batchSize;
+
+        // Check calibration buffer capacity
+        if (newTotal > this.maxCalibPoints) {
+          console.error(`❌ Calibration buffer full (${this.maxCalibPoints} points max).`);
+          console.error(`   Current: ${currentCalibPoints} points, trying to add: ${batchSize} points`);
+          console.error(`   Total would be: ${newTotal} points (exceeds limit by ${newTotal - this.maxCalibPoints})`);
+          console.error(`   Hint: Call clearCalibrationBuffer() to start a new calibration session.`);
+
+          // Dispose the new point's tensors since we can't store it
+          tf.dispose([supportX.eyePatches, supportX.headVectors, supportX.faceOrigins3D, supportY]);
+
+          // Don't proceed with training
+          return;
+        }
+
+        // Add to calibration buffer
+        this.calibData.calibSupportX.push(supportX);
+        this.calibData.calibSupportY.push(supportY);
+        this.calibData.calibTimestamps.push(Date.now());
+
+        console.log(`✅ Added ${batchSize} calibration point(s) - Total: ${newTotal}/${this.maxCalibPoints} points in ${this.calibData.calibSupportX.length} batch(es)`);
+      } else {
+        // Add to clickstream buffer
+        this.calibData.clickSupportX.push(supportX);
+        this.calibData.clickSupportY.push(supportY);
+        this.calibData.clickTimestamps.push(Date.now());
+
+        // Count total click points across all batches
+        const totalClickPoints = this.calibData.clickSupportX.reduce((sum, s) => sum + s.eyePatches.shape[0], 0);
+        const totalCalibPoints = this.calibData.calibSupportX.reduce((sum, s) => sum + s.eyePatches.shape[0], 0);
+
+        console.log(`✅ Added ${batchSize} click point(s) - Total: ${totalClickPoints} click points, ${totalCalibPoints} calib points`);
+      }
+
+      // === CONCATENATE FROM BOTH BUFFERS FOR TRAINING ===
+      let tfEyePatches: tf.Tensor;
+      let tfHeadVectors: tf.Tensor;
+      let tfFaceOrigins3D: tf.Tensor;
+      let tfSupportY: tf.Tensor;
+      let needsDisposal: boolean; // Track if we created new tensors that need disposal
+
+      const allSupportX = [...this.calibData.calibSupportX, ...this.calibData.clickSupportX];
+      const allSupportY = [...this.calibData.calibSupportY, ...this.calibData.clickSupportY];
+
+      if (allSupportX.length > 1) {
+        // Create concatenated tensors from both buffers
+        tfEyePatches = tf.concat(allSupportX.map(s => s.eyePatches), 0);
+        tfHeadVectors = tf.concat(allSupportX.map(s => s.headVectors), 0);
+        tfFaceOrigins3D = tf.concat(allSupportX.map(s => s.faceOrigins3D), 0);
+        tfSupportY = tf.concat(allSupportY, 0);
+        needsDisposal = true; // We created new concatenated tensors
+      } else {
+        // Only one point total, use it directly (no concatenation needed)
+        tfEyePatches = supportX.eyePatches;
+        tfHeadVectors = supportX.headVectors;
+        tfFaceOrigins3D = supportX.faceOrigins3D;
+        tfSupportY = supportY;
+        needsDisposal = false; // These are references to buffer tensors, don't dispose
+      }
+
+      // === COMPUTE AFFINE TRANSFORMATION ===
+      // Requires at least 4 points (affine has 6 DOF: 2 scale, 2 rotation/shear, 2 translation)
       if (tfEyePatches.shape[0] > 3) {
         const supportPreds = tf.tidy(() => {
           return this.blazeGaze.predict(
-              tfEyePatches,
-              tfHeadVectors,
-              tfFaceOrigins3D
+            tfEyePatches,
+            tfHeadVectors,
+            tfFaceOrigins3D
           );
-        })
+        });
+
         const supportPredsNumber = supportPreds.arraySync() as number[][];
-        // Memory leak fix
-        supportPreds.dispose(); // Explicitly dispose the result of tidy block if not returned
         const supportYNumber = tfSupportY.arraySync() as number[][];
+
+        // Dispose the prediction tensor after extracting values
+        tf.dispose(supportPreds);
+
         const affineMatrixML = computeAffineMatrixML(
-            supportPredsNumber,
-            supportYNumber
-        )
+          supportPredsNumber,
+          supportYNumber
+        );
 
-        // Memory leak fix
-        // dispose of old affine matrix
-        if (this.affineMatrix) this.affineMatrix.dispose();
-
+        // Dispose old affine matrix before creating new one
+        if (this.affineMatrix) {
+          tf.dispose(this.affineMatrix);
+        }
         this.affineMatrix = tf.tensor2d(affineMatrixML, [2, 3], 'float32');
       }
 
+      // === MAML-STYLE ADAPTATION TRAINING ===
       tf.tidy(() => {
         for (let i = 0; i < stepsInner; i++) {
-          const {grads, value: loss} = tf.variableGrads(() => {
+          const { grads, value: loss } = tf.variableGrads(() => {
             const preds = this.blazeGaze.predict(tfEyePatches, tfHeadVectors, tfFaceOrigins3D);
             const predsTransformed = this.affineMatrix ? applyAffineMatrix(this.affineMatrix, preds) : preds;
             const loss = tf.losses.meanSquaredError(tfSupportY, predsTransformed);
             return loss.asScalar();
           });
 
-          // Apply grads manually
-          this.optimizer.applyGradients(grads);
+          // variableGrads returns NamedTensorMap where values are gradients of Variables
+          // Type assertion is safe because variableGrads computes gradients w.r.t. Variables
+          opt.applyGradients(grads as Record<string, tf.Variable>);
 
-          // Optionally log
-          loss.data().then(val => console.log(`Loss = ${val[0].toFixed(4)}`));
+          // Explicitly dispose gradients (defensive, tf.tidy should handle this)
+          Object.values(grads).forEach(g => g.dispose());
+
+          // Synchronous logging to avoid race condition with tf.tidy() cleanup
+          const lossValue = loss.dataSync()[0];
+          console.log(`Loss = ${lossValue.toFixed(4)}`);
+          loss.dispose();
         }
       });
-    } finally {
-      // Clean up temporary concat copies
-      if (createdTemporaryTensors) {
-        tfEyePatches.dispose();
-        tfHeadVectors.dispose();
-        tfFaceOrigins3D.dispose();
-        tfSupportY.dispose();
+
+      // === CLEANUP: Dispose concatenated tensors ===
+      // Only dispose if we created new tensors via concatenation
+      if (needsDisposal) {
+        tf.dispose([tfEyePatches, tfHeadVectors, tfFaceOrigins3D, tfSupportY]);
       }
-
-      // If using local optimizer, dispose here to prevent leaking momentum tensors
-      // optimizer.dispose();
+    } finally {
+      // CRITICAL: Dispose optimizer to prevent memory leak
+      // Optimizer creates internal variables (momentum buffers, variance accumulators)
+      // that persist until explicitly disposed, causing ~1-5 MB leak per adapt() call
+      opt.dispose();
     }
-    mem = tf.memory();
-    console.log(`Finished Adapt(): Tensors: ${mem.numTensors}, Memory: ${(mem.numBytes / 1024 / 1024).toFixed(2)} MB`);
-
   }
 
   async step(frame: ImageData, timestamp: number): Promise<GazeResult> {
     const tic1 = performance.now();
-    let result = await this.faceLandmarkerClient.processFrame(frame, timestamp) as FaceLandmarkerResult | null;
+    let result = await this.faceLandmarkerClient.processFrame(frame) as FaceLandmarkerResult | null;
     const tic2 = performance.now();
     // result = null; // For testing purposes, we can set result to null to simulate no face detected
     if (!result || !result.faceLandmarks || result.faceLandmarks.length === 0) {
@@ -535,7 +724,7 @@ export default class WebEyeTrack {
       gazeState: gaze_state,
       normPog: kalmanOutput,
       durations: durations,
-      timestamp: timestamp,
+      timestamp: timestamp
     };
 
     // Debug: Printout the tf.Memory
@@ -544,5 +733,65 @@ export default class WebEyeTrack {
     // Update the latest gaze result
     this.latestGazeResult = gaze_result;
     return gaze_result;
+  }
+
+  /**
+   * Disposes all TensorFlow.js tensors and resources held by this tracker.
+   * After calling dispose(), this object should not be used.
+   */
+  dispose(): void {
+    if (this._disposed) {
+      return;
+    }
+
+    // Dispose all calibration buffer tensors
+    this.calibData.calibSupportX.forEach(item => {
+      tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
+    });
+
+    this.calibData.calibSupportY.forEach(tensor => {
+      tf.dispose(tensor);
+    });
+
+    // Dispose all clickstream buffer tensors
+    this.calibData.clickSupportX.forEach(item => {
+      tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
+    });
+
+    this.calibData.clickSupportY.forEach(tensor => {
+      tf.dispose(tensor);
+    });
+
+    // Clear all buffer arrays
+    this.calibData.calibSupportX = [];
+    this.calibData.calibSupportY = [];
+    this.calibData.calibTimestamps = [];
+    this.calibData.clickSupportX = [];
+    this.calibData.clickSupportY = [];
+    this.calibData.clickTimestamps = [];
+
+    // Dispose affine matrix
+    if (this.affineMatrix) {
+      tf.dispose(this.affineMatrix);
+      this.affineMatrix = null;
+    }
+
+    // Dispose child components if they have dispose methods
+    if ('dispose' in this.blazeGaze && typeof this.blazeGaze.dispose === 'function') {
+      this.blazeGaze.dispose();
+    }
+
+    if ('dispose' in this.faceLandmarkerClient && typeof this.faceLandmarkerClient.dispose === 'function') {
+      this.faceLandmarkerClient.dispose();
+    }
+
+    this._disposed = true;
+  }
+
+  /**
+   * Returns true if dispose() has been called on this tracker.
+   */
+  get isDisposed(): boolean {
+    return this._disposed;
   }
 }
