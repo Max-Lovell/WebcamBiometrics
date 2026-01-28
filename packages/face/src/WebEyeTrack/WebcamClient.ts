@@ -130,7 +130,7 @@ export default class WebcamClient {
                 const now = performance.now();
 
                 const context: TrackingContext = {
-                    videoTime: now,
+                    videoTime: (this.videoElement.currentTime * 1000) || 0.0001,
                     systemTime: now,
                     frameId: ++this.fallbackFrameCount,
                 };
