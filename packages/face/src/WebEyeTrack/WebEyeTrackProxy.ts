@@ -5,6 +5,8 @@ interface TrackerConfig {
   maxPoints?: number;
   clickTTL?: number;
   modelPath?: string;
+  maxCalibPoints?: number;  // New Dual-Buffer config
+  maxClickPoints?: number;  // New Dual-Buffer config
 }
 
 // import WebEyeTrackWorker from "worker-loader?inline=no-fallback!./WebEyeTrackWorker.ts";
