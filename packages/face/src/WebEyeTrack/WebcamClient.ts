@@ -7,7 +7,7 @@ export default class WebcamClient {
     private frameCallback?: (frame: ImageData, context: TrackingContext) => Promise<void>;
     private fallbackFrameCount = 0;
     private isRunning: boolean = false; // Flag to kill the loop
-    private handleLoadedData = () => this._processFrames();
+    private loadedDataHandler: (() => void) | null = null;
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -35,6 +35,7 @@ export default class WebcamClient {
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.videoElement.srcObject = this.stream;
             this.isRunning = true;
+            this.loadedDataHandler = () => this._processFrames();
 
             // Set the callback if provided
             if (frameCallback) {
@@ -46,7 +47,7 @@ export default class WebcamClient {
                 this.videoElement.play();
             };
             // Use reference for removal later
-            this.videoElement.addEventListener('loadeddata', this.handleLoadedData);
+            this.videoElement.addEventListener('loadeddata', this.loadedDataHandler);
 
         } catch (error) {
             console.error("Error accessing the webcam:", error);
@@ -62,8 +63,11 @@ export default class WebcamClient {
         }
 
         // Clean up listeners to prevent memory leaks
-        this.videoElement.removeEventListener('loadeddata', this.handleLoadedData);
-        this.videoElement.srcObject = null;
+        if (this.loadedDataHandler) {
+            this.videoElement.removeEventListener('loadeddata', this.loadedDataHandler);
+            this.loadedDataHandler = null;
+            this.videoElement.srcObject = null;
+        }
     }
 
     private _processFrames(): void {
