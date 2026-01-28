@@ -1,4 +1,3 @@
-import { convertVideoFrameToImageData } from './utils/misc';
 import type { TrackingContext } from './types';
 
 export default class WebcamClient {
@@ -11,6 +10,8 @@ export default class WebcamClient {
     private animationFrameId: number | null = null;
     private videoFrameId: number | null = null;
     private _disposed: boolean = false;
+    private cachedCanvas: HTMLCanvasElement | null = null;
+    private cachedContext: CanvasRenderingContext2D | null = null;
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -103,7 +104,7 @@ export default class WebcamClient {
                     return;
                 }
 
-                const imageData = convertVideoFrameToImageData(this.videoElement);
+                const imageData = this.convertVideoFrameToImageData(this.videoElement);
 
                 const context: TrackingContext = {
                     videoTime: (metadata.mediaTime * 1000) || 0.0001, // Convert s to ms
@@ -127,7 +128,7 @@ export default class WebcamClient {
                     return;
                 }
 
-                const imageData = convertVideoFrameToImageData(this.videoElement);
+                const imageData = this.convertVideoFrameToImageData(this.videoElement);
                 const now = performance.now();
 
                 const context: TrackingContext = {
@@ -143,8 +144,47 @@ export default class WebcamClient {
         }
     }
 
+    /**
+     * Converts video frame to ImageData using a cached canvas for performance.
+     * Canvas is created once and reused across all frames unless video dimensions change.
+     */
+    private convertVideoFrameToImageData(frame: HTMLVideoElement): ImageData {
+        const width = frame.videoWidth;
+        const height = frame.videoHeight;
+
+        // Handle invalid dimensions (video not ready)
+        if (width === 0 || height === 0) {
+            throw new Error('Video frame has invalid dimensions. Video may not be ready.');
+        }
+
+        // Create canvas only once or when dimensions change
+        if (!this.cachedCanvas ||
+            this.cachedCanvas.width !== width ||
+            this.cachedCanvas.height !== height) {
+
+            this.cachedCanvas = document.createElement('canvas');
+            this.cachedCanvas.width = width;
+            this.cachedCanvas.height = height;
+
+            // willReadFrequently hint optimizes for repeated getImageData() calls
+            this.cachedContext = this.cachedCanvas.getContext('2d', {
+                willReadFrequently: true
+            })!;
+        }
+
+        // Reuse existing canvas and context
+        this.cachedContext!.drawImage(frame, 0, 0);
+        return this.cachedContext!.getImageData(0, 0, width, height);
+    }
+
+
     dispose(): void {
         this.stopWebcam();
+        this.frameCallback = undefined;
+
+        // Clean up cached canvas resources
+        this.cachedCanvas = null;
+        this.cachedContext = null;
 
         this._disposed = true;
     }
