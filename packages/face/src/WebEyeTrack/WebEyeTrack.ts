@@ -606,6 +606,8 @@ export default class WebEyeTrack {
       // Optimizer creates internal variables (momentum buffers, variance accumulators)
       // that persist until explicitly disposed, causing ~1-5 MB leak per adapt() call
       opt.dispose();
+      let mem = tf.memory();
+      console.log(`End adapt() n Tensors: ${mem.numTensors}, TF Memory: ${(mem.numBytes / 1024 / 1024).toFixed(2)} MB`);
     }
   }
 
