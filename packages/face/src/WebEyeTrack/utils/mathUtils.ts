@@ -1,7 +1,7 @@
-import { Matrix, inverse, pseudoInverse, solve} from 'ml-matrix';
-import { Matrix as MediaPipeMatrix, NormalizedLandmark } from '@mediapipe/tasks-vision';
+import { Matrix, inverse, solve} from 'ml-matrix';
+import type {Matrix as MediaPipeMatrix, NormalizedLandmark} from '@mediapipe/tasks-vision';
 import * as tf from '@tensorflow/tfjs';
-import { Point } from '../types';
+import type {Point} from '../types';
 import { safeSVD } from './safeSVD';
 
 // Used to determine the width of the face
@@ -20,14 +20,14 @@ const MAX_STEP_CM = 5
 const VERTICAL_FOV_DEGREES = 60;
 const NEAR = 1.0; // 1cm
 const FAR = 10000; // 100m
-const ORIGIN_POINT_LOCATION = 'BOTTOM_LEFT_CORNER';
+// const ORIGIN_POINT_LOCATION = 'BOTTOM_LEFT_CORNER';
 
 // ============================================================================
 // Compute Affine Transformation Matrix
 // ============================================================================
 
 export function computeAffineMatrixML(src: number[][], dst: number[][]): number[][] {
-    const N = src.length;
+    // const N = src.length;
     const srcAug = src.map(row => [...row, 1]); // [N, 3]
 
     const X = new Matrix(srcAug);   // [N, 3]
@@ -508,7 +508,7 @@ export function convertUvToXyz(
     const w = worldHomogeneous.get(3, 0);
     const x = worldHomogeneous.get(0, 0) / w;
     const y = worldHomogeneous.get(1, 0) / w;
-    const z = worldHomogeneous.get(2, 0) / w;
+    // const z = worldHomogeneous.get(2, 0) / w;
 
     // Step 6: Scale using the provided zRelative
     const xRelative = -x; // negated to match original convention
@@ -574,7 +574,7 @@ export function convertUvToXyzWithInverse(
     const w = worldHomogeneous.get(3, 0);
     const x = worldHomogeneous.get(0, 0) / w;
     const y = worldHomogeneous.get(1, 0) / w;
-    const z = worldHomogeneous.get(2, 0) / w;
+    // const z = worldHomogeneous.get(2, 0) / w;
 
     // Step 6: Scale using the provided zRelative
     const xRelative = -x; // negated to match original convention
@@ -634,7 +634,7 @@ export function refineDepthByRadialMagnitude(
     finalProjectedPts: [number, number][],
     detected2D: [number, number][],
     oldZ: number,
-    alpha = 0.5
+    // alpha = 0.5
 ): number {
     const numPts = finalProjectedPts.length;
 
@@ -735,7 +735,7 @@ export function faceReconstruction(
     let newZ = initialZGuess;
     for (let i = 0; i < 10; i++) {
         const projectedPts = canonical.map(p => transform3DTo2D(transform3DTo3D(p, finalTransform), intrinsicsMatrix));
-        newZ = refineDepthByRadialMagnitude(projectedPts, detected2D, finalTransform.get(2, 3), 0.5);
+        newZ = refineDepthByRadialMagnitude(projectedPts, detected2D, finalTransform.get(2, 3));
         if (Math.abs(newZ - finalTransform.get(2, 3)) < 0.25) break;
 
         const newX = firstFinalTransform.get(0, 3) * (newZ / initialZGuess);
