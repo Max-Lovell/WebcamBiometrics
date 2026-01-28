@@ -1,24 +1,24 @@
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import * as tf from '@tensorflow/tfjs';
-import { Matrix } from 'ml-matrix';
+import {Matrix} from 'ml-matrix';
 
-import type {Point, GazeResult} from "./types";
+import type {GazeResult, Point} from "./types";
 import BlazeGaze from "./BlazeGaze";
 import FaceLandmarkerClient from "./FaceLandmarkerClient";
 import {
+  applyAffineMatrix,
+  computeAffineMatrixML,
+  computeEAR,
   computeFaceOrigin3D,
   createIntrinsicsMatrix,
   createPerspectiveMatrix,
-  translateMatrix,
-  faceReconstruction,
   estimateFaceWidth,
+  faceReconstruction,
   getHeadVector,
   obtainEyePatch,
-  computeEAR,
-  computeAffineMatrixML,
-  applyAffineMatrix
+  translateMatrix
 } from "./utils/mathUtils";
-import { KalmanFilter2D } from "./utils/filter";
+import {KalmanFilter2D} from "./utils/filter";
 
 // Reference
 // https://mediapipe-studio.webapps.google.com/demo/face_landmarker
@@ -157,7 +157,7 @@ export default class WebEyeTrack {
       // Warmup backward pass (gradient computation)
       const opt = tf.train.adam(1e-5, 0.85, 0.9, 1e-8);
       tf.tidy(() => {
-        const { grads, value: loss } = tf.variableGrads(() => {
+        const { grads } = tf.variableGrads(() => {
           const preds = this.blazeGaze.predict(dummyEyePatch, dummyHeadVector, dummyFaceOrigin3D);
           const loss = tf.losses.meanSquaredError(dummyTarget, preds);
           return loss.asScalar();
@@ -377,7 +377,7 @@ export default class WebEyeTrack {
     }
 
     // Perform 3D face reconstruction and determine the pose in 3d cm space
-    const [metricTransform, metricFace] = faceReconstruction(
+    const [_, metricFace] = faceReconstruction(
       this.perspectiveMatrix,
       normFaceLandmarks as [number, number][],
       faceRT,
@@ -389,12 +389,10 @@ export default class WebEyeTrack {
     );
 
     // Lastly, compute the gaze origins in 3D space using the metric face
-    const faceOrigin3D = computeFaceOrigin3D(
-      metricFace
-    );
-
     // return faceOrigin3D;
-    return faceOrigin3D;
+    return computeFaceOrigin3D(
+        metricFace
+    );
   }
 
   prepareInput(frame: ImageData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
