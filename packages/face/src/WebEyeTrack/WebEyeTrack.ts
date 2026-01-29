@@ -75,6 +75,8 @@ export default class WebEyeTrack {
   public latestMouseClick: { x: number, y: number, timestamp: number } | null = null;
   public latestGazeResult: GazeResult | null = null;
 
+  private smoothedFaceOrigin: number[] = [0, 0, 60]; // Default start guess
+  private originAlpha: number = 0.1; // Smoothing factor (0.1 = heavy smoothing, 0.9 = reactive)
   private widthAlpha: number = 0.05; // Smoothing factor (lower = smoother but slower to adapt)
 
   // Separate buffers for calibration (persistent) vs clickstream (ephemeral) points
@@ -417,11 +419,28 @@ export default class WebEyeTrack {
       this.latestGazeResult?.faceOrigin3D?.[2] ?? 60
     );
 
-    // Lastly, compute the gaze origins in 3D space using the metric face
-    // return faceOrigin3D;
-    return computeFaceOrigin3D(
-        metricFace
+    const rawOrigin = computeFaceOrigin3D(metricFace);
+    // Get distance
+    const dist = Math.hypot(
+        rawOrigin[0] - this.smoothedFaceOrigin[0],
+        rawOrigin[1] - this.smoothedFaceOrigin[1],
+        rawOrigin[2] - this.smoothedFaceOrigin[2]
     );
+
+    // Apply Low-Pass Filter to smooth out small z-changes
+    if (dist > 10) {
+      // User moved head quickly, reset filter
+      this.smoothedFaceOrigin = rawOrigin;
+    } else {
+      // User is sitting still, smooth the jitter
+      this.smoothedFaceOrigin = [
+        this.smoothedFaceOrigin[0] * (1 - this.originAlpha) + rawOrigin[0] * this.originAlpha,
+        this.smoothedFaceOrigin[1] * (1 - this.originAlpha) + rawOrigin[1] * this.originAlpha,
+        this.smoothedFaceOrigin[2] * (1 - this.originAlpha) + rawOrigin[2] * this.originAlpha,
+      ];
+    }
+
+    return this.smoothedFaceOrigin;
   }
 
   prepareInput(frame: ImageData | VideoFrame, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
