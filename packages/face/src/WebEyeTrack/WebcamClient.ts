@@ -88,7 +88,7 @@ export default class WebcamClient {
         
         this.videoElement.srcObject = null;
     }
-
+    
     private _processFrames(): void {
         const process = (now: number, metadata?: VideoFrameCallbackMetadata) => {
             if (!this.isRunning) return;
@@ -136,18 +136,13 @@ export default class WebcamClient {
         }
 
         // Create canvas only once or when dimensions change
-        if (!this.cachedCanvas ||
-            this.cachedCanvas.width !== width ||
-            this.cachedCanvas.height !== height) {
-
+        if (!this.cachedCanvas || this.cachedCanvas.width !== width || this.cachedCanvas.height !== height) {
             this.cachedCanvas = document.createElement('canvas');
             this.cachedCanvas.width = width;
             this.cachedCanvas.height = height;
 
             // willReadFrequently hint optimizes for repeated getImageData() calls
-            this.cachedContext = this.cachedCanvas.getContext('2d', {
-                willReadFrequently: true
-            })!;
+            this.cachedContext = this.cachedCanvas.getContext('2d', { willReadFrequently: true})!;
         }
 
         // Reuse existing canvas and context
