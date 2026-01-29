@@ -151,6 +151,7 @@ export function cropImageData(
     width: number,
     height: number
 ): ImageData {
+    // console.log('Cropping image to: ', {width, height}) // Note this is protected from error now
     const output = new ImageData(width, height);
     const src = source.data;
     const dst = output.data;
@@ -194,60 +195,25 @@ export function resizeImageData(
     const output = new ImageData(outWidth, outHeight);
     const src = source.data;
     const dst = output.data;
-    const srcWidth = source.width;
-    const srcHeight = source.height;
+    const { width: srcWidth, height: srcHeight } = source;
 
-    // Calculate scale factors
     const scaleX = srcWidth / outWidth;
     const scaleY = srcHeight / outHeight;
 
     for (let dy = 0; dy < outHeight; dy++) {
         for (let dx = 0; dx < outWidth; dx++) {
-            // Map destination pixel to source coordinates
-            // Use center-based mapping: add 0.5 to get pixel center
-            const srcX = (dx + 0.5) * scaleX - 0.5;
-            const srcY = (dy + 0.5) * scaleY - 0.5;
+            const x = Math.min(Math.floor(dx * scaleX), srcWidth - 1);
+            const y = Math.min(Math.floor(dy * scaleY), srcHeight - 1);
 
-            // Get integer and fractional parts
-            const x0 = Math.floor(srcX);
-            const y0 = Math.floor(srcY);
-            const x1 = Math.min(x0 + 1, srcWidth - 1);
-            const y1 = Math.min(y0 + 1, srcHeight - 1);
-
-            // Clamp to source bounds
-            const x0Clamped = Math.max(0, Math.min(x0, srcWidth - 1));
-            const y0Clamped = Math.max(0, Math.min(y0, srcHeight - 1));
-
-            // Calculate interpolation weights
-            const wx = Math.max(0, Math.min(1, srcX - x0));
-            const wy = Math.max(0, Math.min(1, srcY - y0));
-
-            // Get indices for 4 neighboring pixels
-            const idx00 = (y0Clamped * srcWidth + x0Clamped) * 4;
-            const idx10 = (y0Clamped * srcWidth + x1) * 4;
-            const idx01 = (y1 * srcWidth + x0Clamped) * 4;
-            const idx11 = (y1 * srcWidth + x1) * 4;
-
+            const srcIdx = (y * srcWidth + x) * 4;
             const dstIdx = (dy * outWidth + dx) * 4;
 
-            // Bilinear interpolation for each channel (R, G, B, A)
             for (let c = 0; c < 4; c++) {
-                const v00 = src[idx00 + c];
-                const v10 = src[idx10 + c];
-                const v01 = src[idx01 + c];
-                const v11 = src[idx11 + c];
-
-                // Interpolate in x direction
-                const v0 = v00 * (1 - wx) + v10 * wx;
-                const v1 = v01 * (1 - wx) + v11 * wx;
-
-                // Interpolate in y direction
-                const value = v0 * (1 - wy) + v1 * wy;
-
-                dst[dstIdx + c] = Math.round(value);
+                dst[dstIdx + c] = src[srcIdx + c];
             }
         }
     }
+    return output;
 
     return output;
 }
