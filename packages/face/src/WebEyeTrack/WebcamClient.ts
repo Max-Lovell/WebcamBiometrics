@@ -179,6 +179,7 @@ export default class WebcamClient {
 
 
     dispose(): void {
+        this.isRunning = false;
         this.stopWebcam();
         this.frameCallback = undefined;
 
