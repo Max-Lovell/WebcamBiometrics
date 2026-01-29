@@ -31,11 +31,12 @@ export default class WebcamClient {
         try {
             const constraints: MediaStreamConstraints = {
                 video: { // Note the higher constraints are good for extracting vitals later, but slower for eyetracking
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    // width: { ideal: 640 },
-                    // height: { ideal: 480 },
-                    frameRate: { ideal: 60, min: 30 },
+                    // width: { ideal: 1920 },
+                    // height: { ideal: 1080 },
+                    // frameRate: { ideal: 60 },
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 30 },
                     facingMode: "user"
                 },
                 audio: false
