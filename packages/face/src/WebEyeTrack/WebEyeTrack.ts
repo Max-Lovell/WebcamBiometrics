@@ -61,8 +61,7 @@ export default class WebEyeTrack {
   // Instance variables
   private blazeGaze: BlazeGaze;
   private faceLandmarkerClient: FaceLandmarkerClient;
-  private faceWidthComputed: boolean = false;
-  private faceWidthCm: number = -1;
+  private faceWidthCm: number = 15;
   private perspectiveMatrixSet: boolean = false;
   private perspectiveMatrix: Matrix = new Matrix(4, 4);
   private intrinsicsMatrixSet: boolean = false;
@@ -75,6 +74,8 @@ export default class WebEyeTrack {
   public loaded: boolean = false;
   public latestMouseClick: { x: number, y: number, timestamp: number } | null = null;
   public latestGazeResult: GazeResult | null = null;
+
+  private widthAlpha: number = 0.05; // Smoothing factor (lower = smoother but slower to adapt)
 
   // Separate buffers for calibration (persistent) vs clickstream (ephemeral) points
   public calibData: {
@@ -396,11 +397,12 @@ export default class WebEyeTrack {
   }
 
   computeFaceOrigin3D(frame: ImageData, normFaceLandmarks: Point[], faceLandmarks: Point[], faceRT: Matrix): number[] {
+    // Re-estimate face width to stop wobble
+    const currentFaceWidth = estimateFaceWidth(faceLandmarks);
 
-    // Estimate the face width in centimeters if not set
-    if (this.faceWidthComputed === false) {
-      this.faceWidthCm = estimateFaceWidth(faceLandmarks);
-      this.faceWidthComputed = true;
+    // Update running average to smooth out wobble - allow update between 10-20cm to reject glitches
+    if (currentFaceWidth > 10 && currentFaceWidth < 22) {
+      this.faceWidthCm = (this.faceWidthCm * (1 - this.widthAlpha)) + (currentFaceWidth * this.widthAlpha);
     }
 
     // Perform 3D face reconstruction and determine the pose in 3d cm space
