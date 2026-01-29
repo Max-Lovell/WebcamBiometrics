@@ -5,7 +5,6 @@ export default class WebcamClient {
     private videoElement: HTMLVideoElement;
     private stream?: MediaStream;
     private frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>;
-    private fallbackFrameCount = 0;
     private isRunning: boolean = false; // Flag to kill the loop
     private animationFrameId: number | null = null;
     private videoFrameId: number | null = null;
