@@ -50,15 +50,14 @@ export default class WebcamClient {
             if (frameCallback) {
                 this.frameCallback = frameCallback;
             }
-            this.loadedDataHandler = () => this._processFrames();
 
-            // Start video playback
-            this.videoElement.onloadedmetadata = () => {
-                this.videoElement.play();
-            };
-            // Use reference for removal later
-            this.videoElement.addEventListener('loadeddata', this.loadedDataHandler);
-
+            // Start video playback - Promise guarantees video has height and width when it starts
+            await new Promise<void>((resolve) => {
+                if (this.videoElement.readyState >= 1) return resolve();
+                this.videoElement.onloadedmetadata = () => resolve();
+            });
+            await this.videoElement.play();
+            this._processFrames();
         } catch (error) {
             // Reset state on failure so the user can try again
             this.isRunning = false;
@@ -85,13 +84,8 @@ export default class WebcamClient {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = undefined;
         }
-
-        // Clean up listeners to prevent memory leaks
-        if (this.loadedDataHandler) {
-            this.videoElement.removeEventListener('loadeddata', this.loadedDataHandler);
-            this.loadedDataHandler = null;
-            this.videoElement.srcObject = null;
-        }
+        
+        this.videoElement.srcObject = null;
     }
 
     private _processFrames(): void {
