@@ -391,8 +391,8 @@ export default class WebEyeTrack {
         [this.latestGazeResult?.headVector as number[]],
         [this.latestGazeResult?.faceOrigin3D as number[]],
         [[x, y]],
-        10,      // stepsInner: matches Python main.py:183
-        1e-4,    // innerLR: matches Python main.py:184
+          1,      // stepsInner: matches Python main.py:183
+        1e-5,    // innerLR: matches Python main.py:184
         'click'  // ptType: matches Python main.py:185
       );
     }
