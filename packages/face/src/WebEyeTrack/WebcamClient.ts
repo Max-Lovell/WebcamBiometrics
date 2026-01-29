@@ -148,7 +148,7 @@ export default class WebcamClient {
             const imageData = this.convertVideoFrameToImageData(this.videoElement);
 
             const context: TrackingContext = {
-                videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000,
+                videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000 || 0.0001,
                 systemTime: now,
                 frameId: metadata?.presentedFrames || 0,
             };
