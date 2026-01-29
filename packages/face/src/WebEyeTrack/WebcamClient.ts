@@ -177,6 +177,9 @@ export default class WebcamClient {
         return this.cachedContext!.getImageData(0, 0, width, height);
     }
 
+    pauseProcessing(): void {
+        this.frameCallback = undefined;
+    }
 
     dispose(): void {
         this.isRunning = false;
