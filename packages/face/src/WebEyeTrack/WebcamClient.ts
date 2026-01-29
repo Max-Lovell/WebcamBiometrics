@@ -9,7 +9,6 @@ export default class WebcamClient {
     ) => Promise<void>;
     private fallbackFrameCount = 0;
     private isRunning: boolean = false; // Flag to kill the loop
-    private loadedDataHandler: (() => void) | null = null;
     private animationFrameId: number | null = null;
     private videoFrameId: number | null = null;
     private _disposed: boolean = false;
