@@ -1,12 +1,10 @@
 import type { TrackingContext } from './types';
+export type VideoFrameData = VideoFrame | ImageData;
 
 export default class WebcamClient {
     private videoElement: HTMLVideoElement;
     private stream?: MediaStream;
-    private frameCallback?: (
-        frame: ImageData | VideoFrame,
-        context: TrackingContext
-    ) => Promise<void>;
+    private frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>;
     private fallbackFrameCount = 0;
     private isRunning: boolean = false; // Flag to kill the loop
     private animationFrameId: number | null = null;
@@ -23,7 +21,7 @@ export default class WebcamClient {
         this.videoElement = videoElement;
     }
 
-    async startWebcam(frameCallback?: (frame: ImageData | VideoFrame, context: TrackingContext) => Promise<void>): Promise<void> {
+    async startWebcam(frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>): Promise<void> {
         // Guard against double run of stream
         if (this.isRunning || this.stream) {
             console.warn("Webcam is already running or starting.");
