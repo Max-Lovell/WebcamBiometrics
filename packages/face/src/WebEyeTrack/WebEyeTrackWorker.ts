@@ -35,45 +35,57 @@ self.onmessage = async (e: MessageEvent) => {
         status = 'inference';
         self.postMessage({ type: 'statusUpdate', status: status});
         const { frame, context } = payload;
+        try {
+          const gazeResult = await tracker.step(frame, context.videoTime);
+          // console.log('gazeResult', gazeResult);
+          // add rPPG
+          let vitalsResult = null;
+          if (gazeResult.facialLandmarks && gazeResult.facialLandmarks.length > 0) {
+            // Convert ROI indices to Pixel Coordinates
+            // gazeResult.facialLandmarks are normalized (0.0 - 1.0)
+            const foreheadPoints = FACE_ROIS.forehead.map((index: number) => {
+              const landmark = gazeResult.facialLandmarks[index];
+              return {
+                x: landmark.x * frame.width,  // Scale to pixels
+                y: landmark.y * frame.height
+              };
+            });
 
-        const gazeResult = await tracker.step(frame, context.videoTime);
-        // console.log('gazeResult', gazeResult);
-        // add rPPG
-        let vitalsResult = null;
-        if (gazeResult.facialLandmarks && gazeResult.facialLandmarks.length > 0) {
-          // Convert ROI indices to Pixel Coordinates
-          // gazeResult.facialLandmarks are normalized (0.0 - 1.0)
-          const foreheadPoints = FACE_ROIS.forehead.map((index: number) => {
-            const landmark = gazeResult.facialLandmarks[index];
-            return {
-              x: landmark.x * frame.width,  // Scale to pixels
-              y: landmark.y * frame.height
-            };
-          });
-
-          // 3. Process the frame using the persistent estimator
-          vitalsResult = foreheadEstimator.processFrame(
-              frame,
-              foreheadPoints,
-              context.videoTime
-          );
-        }
-        // Attach context to result so main thread can log
-        const finalResult = {
-          ...gazeResult,
-          // Attach context so main thread can log it
-          context: context,
-          // Default to 0s if no face detected or buffer not full
-          vitals: {
-            bpm: vitalsResult ? vitalsResult.bpm : 0,
-            wave: vitalsResult ? vitalsResult.signal : 0,
-            confidence: vitalsResult ? vitalsResult.confidence : 0
+            // 3. Process the frame using the persistent estimator
+            vitalsResult = foreheadEstimator.processFrame(
+                frame,
+                foreheadPoints,
+                context.videoTime
+            );
           }
-        };
-        self.postMessage({ type: 'stepResult', result: finalResult });
-
+          // Attach context to result so main thread can log
+          const finalResult = {
+            ...gazeResult,
+            // Attach context so main thread can log it
+            context: context,
+            // Default to 0s if no face detected or buffer not full
+            vitals: {
+              bpm: vitalsResult ? vitalsResult.bpm : 0,
+              wave: vitalsResult ? vitalsResult.signal : 0,
+              confidence: vitalsResult ? vitalsResult.confidence : 0
+            }
+          };
+          self.postMessage({ type: 'stepResult', result: finalResult });
+        } catch (err) {
+          console.error(err);
+        } finally {
+          // Must manage memory of video frames
+          if (frame && typeof frame.close === 'function') {
+            frame.close();
+          }
+        }
         status = 'idle';
         self.postMessage({ type: 'statusUpdate', status: status});
+      } else {
+        // Race edge case handling if the worker receives frame while busy
+        if (payload.frame && typeof payload.frame.close === 'function') {
+          payload.frame.close();
+        }
       }
       break;
 

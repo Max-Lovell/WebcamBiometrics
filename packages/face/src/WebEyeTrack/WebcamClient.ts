@@ -57,7 +57,12 @@ export default class WebcamClient {
                 this.videoElement.onloadedmetadata = () => resolve();
             });
             this.videoElement.play().catch(e => console.warn("Autoplay blocked:", e));
-            this._processFrames();
+
+            if ('MediaStreamTrackProcessor' in window && 'VideoFrame' in window) {
+                void this._startStreamProcessor();
+            } else {
+                this._processFrames();
+            }
         } catch (error) {
             // Reset state on failure so the user can try again
             this.isRunning = false;

@@ -101,6 +101,10 @@ export default class WebEyeTrack {
   public maxClickPoints: number = 5;    // Max clickstream points (FIFO + TTL)
   public clickTTL: number = 60;         // Time-to-live for click points in seconds
 
+  // Cached canvas for efficient VideoFrame -> ImageData conversion
+  private tempCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
+  private tempCtx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null = null;
+
   constructor(
       maxPoints: number = 5,              // Deprecated: use maxClickPoints instead
       clickTTL: number = 60,              // Time-to-live for click points in seconds
@@ -117,6 +121,29 @@ export default class WebEyeTrack {
     this.maxCalibPoints = maxCalibPoints ?? 4;           // Default: 4-point calibration
     this.maxClickPoints = maxClickPoints ?? maxPoints;   // Use maxClickPoints if provided, else maxPoints
     this.clickTTL = clickTTL;
+  }
+
+  private getTempContext(width: number, height: number) {
+    if (!this.tempCanvas || !this.tempCtx) {
+      if (typeof OffscreenCanvas !== 'undefined') {
+        this.tempCanvas = new OffscreenCanvas(width, height);
+        this.tempCtx = this.tempCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+      } else {
+        // Fallback if worker doesn't support OffscreenCanvas (rare)
+        this.tempCanvas = document.createElement('canvas');
+        this.tempCanvas.width = width;
+        this.tempCanvas.height = height;
+        this.tempCtx = this.tempCanvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
+      }
+    }
+
+    // Ensure dimensions match
+    if (this.tempCanvas.width !== width || this.tempCanvas.height !== height) {
+      this.tempCanvas.width = width;
+      this.tempCanvas.height = height;
+    }
+
+    return this.tempCtx;
   }
 
   async initialize(modelPath?: string): Promise<void> {
@@ -395,11 +422,26 @@ export default class WebEyeTrack {
     );
   }
 
-  prepareInput(frame: ImageData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
+  prepareInput(frame: ImageData | VideoFrame, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
 
-    // Get the dimensions of the video frame
-    const width = frame.width;
-    const height = frame.height;
+    let width: number;
+    let height: number;
+    let frameImageData: ImageData;
+
+    if (frame instanceof VideoFrame) {
+      width = frame.displayWidth;
+      height = frame.displayHeight;
+
+      const ctx = this.getTempContext(width, height);
+
+      ctx.drawImage(frame, 0, 0);
+      frameImageData = ctx.getImageData(0, 0, width, height);
+    } else {
+      // Already ImageData - Legacy for older Safari mostly
+      width = frame.width;
+      height = frame.height;
+      frameImageData = frame;
+    }
 
     // If perspective matrix is not set, initialize it
     if (!this.perspectiveMatrixSet) {
@@ -427,13 +469,13 @@ export default class WebEyeTrack {
 
     // First, extract the eye patch
     const eyePatch = obtainEyePatch(
-      frame,
+        frameImageData,
       landmarks2d,
     );
 
     // Second, compute the face origin in 3D space
     const face_origin_3d = this.computeFaceOrigin3D(
-      frame,
+        frameImageData,
       landmarks.map((l: NormalizedLandmark) => [l.x, l.y]),
       landmarks2d,
       faceRT
@@ -611,7 +653,7 @@ export default class WebEyeTrack {
     }
   }
 
-  async step(frame: ImageData, timestamp: number): Promise<GazeResult> {
+  async step(frame: ImageData | VideoFrame, timestamp: number): Promise<GazeResult> {
     const tic1 = performance.now();
     let result = await this.faceLandmarkerClient.processFrame(frame, timestamp) as FaceLandmarkerResult | null;
     const tic2 = performance.now();

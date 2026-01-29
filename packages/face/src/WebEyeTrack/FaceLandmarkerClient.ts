@@ -37,7 +37,7 @@ export default class FaceLandmarkerClient {
     }
   }
 
-  async processFrame(frame: ImageData, timestamp: number): Promise<FaceLandmarkerResult | null> {
+  async processFrame(frame: ImageData | VideoFrame, timestamp: number): Promise<FaceLandmarkerResult | null> {
     if (!this.faceLandmarker) {
       console.error("FaceLandmarker is not loaded yet.");
       return null;

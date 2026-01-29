@@ -35,19 +35,28 @@ export default class WebEyeTrackProxy {
           console.log('[WebEyeTrackProxy] Worker is ready');
 
           // Start the webcam client and set up the frame callback
-            // TODO: await startWebcam?
           void webcamClient.startWebcam(async (frame: ImageData | VideoFrame, context: TrackingContext) => {
             // Send the frame to the worker for processing
             if (this.status === 'idle') {
               // extract the buffer to transfer ownership
-              if(frame instanceof ImageData) {
-                const buffer = frame.data.buffer; // Note: frame.data is an overview of raw memory in frame.data.buffer
-
+              if (frame instanceof VideoFrame) {
                 this.worker.postMessage({
                   type: 'step',
                   payload: { frame, context }
-                }, [buffer]) // Transfer memory ownership from main thread to worker (auto-populates 'frame' object), rather than copy.
-              }
+                }, [frame]);
+              } else if(frame instanceof ImageData) {
+                  const buffer = frame.data.buffer; // Note: frame.data is an overview of raw memory in frame.data.buffer
+
+                  this.worker.postMessage({
+                    type: 'step',
+                    payload: { frame, context }
+                  }, [buffer]) // Transfer memory ownership from main thread to worker (auto-populates 'frame' object), rather than copy.
+                }
+              } else {
+                // CRITICAL: VideoFrames MUST be closed manually - not garbage collected automatically and holds GPU resources.
+                if (frame instanceof VideoFrame) {
+                  frame.close();
+                }
             }
           });
           break;
