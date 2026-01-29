@@ -11,6 +11,7 @@ export default class WebcamClient {
     private _disposed: boolean = false;
     private cachedCanvas: HTMLCanvasElement | null = null;
     private cachedContext: CanvasRenderingContext2D | null = null;
+    private abortController: AbortController | null = null;
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -69,6 +70,11 @@ export default class WebcamClient {
     stopWebcam(): void {
         this.isRunning = false; // Stop the rvfc/raf loop
 
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+
         // Cancel pending frame
         if (this.animationFrameId !== null) {
             cancelAnimationFrame(this.animationFrameId);
@@ -84,10 +90,51 @@ export default class WebcamClient {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = undefined;
         }
-        
+
         this.videoElement.srcObject = null;
     }
-    
+
+    private async _startStreamProcessor() {
+        console.log("Using MediaStreamTrackProcessor (High Performance)");
+
+        const track = this.stream?.getVideoTracks()[0];
+        if (!track) return;
+
+        // @ts-ignore - 'webcodecs' types might be missing in some setups
+        const processor = new MediaStreamTrackProcessor({ track });
+        const reader = processor.readable.getReader();
+
+        this.abortController = new AbortController();
+        const signal = this.abortController.signal;
+
+        try {
+            while (!signal.aborted) {
+                const result = await reader.read();
+                if (result.done) break;
+
+                const frame = result.value as VideoFrame;
+
+                if (this.frameCallback) {
+                    const context: TrackingContext = {
+                        videoTime: frame.timestamp / 1000, // micro to milli
+                        systemTime: performance.now(),
+                        frameId: 0, // Not available in this API
+                    };
+
+                    // Await the callback so we don't close the frame before the user is done with it.
+                    await this.frameCallback(frame, context);
+                }
+
+                // Release GPU memory
+                frame.close();
+            }
+        } catch (e) {
+            if (!signal.aborted) console.error("Stream processor error:", e);
+        } finally {
+            reader.releaseLock();
+        }
+    }
+
     private _processFrames(): void {
         const process = (now: number, metadata?: VideoFrameCallbackMetadata) => {
             if (!this.isRunning) return;
