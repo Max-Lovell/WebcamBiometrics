@@ -53,10 +53,10 @@ export default class WebcamClient {
 
             // Start video playback - Promise guarantees video has height and width when it starts
             await new Promise<void>((resolve) => {
-                if (this.videoElement.readyState >= 1) return resolve();
+                if (this.videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) return resolve();
                 this.videoElement.onloadedmetadata = () => resolve();
             });
-            await this.videoElement.play();
+            this.videoElement.play().catch(e => console.warn("Autoplay blocked:", e));
             this._processFrames();
         } catch (error) {
             // Reset state on failure so the user can try again
