@@ -63,6 +63,7 @@ export default class WebcamClient {
             this.isRunning = false;
             this.stream = undefined;
             console.error("Error accessing the webcam:", error);
+            throw error; // Re-throw so the UI knows it failed
         }
     }
 
