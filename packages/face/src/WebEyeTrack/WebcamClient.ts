@@ -90,52 +90,35 @@ export default class WebcamClient {
     }
 
     private _processFrames(): void {
-        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) { // Higher Precision for if available
-            console.log('Using requestVideoFrameCallback')
-            // 'now' and 'metadata' are provided by the browser API
-            const process = (now: number, metadata: VideoFrameCallbackMetadata) => {
-                if (!this.isRunning || !this.videoElement || this.videoElement.paused || this.videoElement.ended) {
-                    this.videoFrameId = null;
-                    return;
-                }
+        const process = (now: number, metadata?: VideoFrameCallbackMetadata) => {
+            if (!this.isRunning) return;
 
-                const imageData = this.convertVideoFrameToImageData(this.videoElement);
+            // Extract pixel data using the fallback canvas method
+            const imageData = this.convertVideoFrameToImageData(this.videoElement);
 
-                const context: TrackingContext = {
-                    videoTime: (metadata.mediaTime * 1000) || 0.0001, // Convert s to ms
-                    systemTime: now,
-                    frameId: metadata.presentedFrames,
-                    rawMetadata: metadata // TODO: consider how expectedDisplayTime might be useful?
-                };
-
-                if (this.frameCallback) void this.frameCallback(imageData, context);
-                this.videoFrameId = this.videoElement.requestVideoFrameCallback(process);
+            const context: TrackingContext = {
+                videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000,
+                systemTime: now,
+                frameId: metadata?.presentedFrames || 0,
             };
 
-            this.videoFrameId = this.videoElement.requestVideoFrameCallback(process);
+            if (this.frameCallback) void this.frameCallback(imageData, context);
 
-        } else { // Fallback (Firefox, Safari)
-            console.warn("requestVideoFrameCallback missing. Falling back to requestAnimationFrame.");
-
-            const process = () => {
-                if (!this.videoElement || this.videoElement.paused || this.videoElement.ended) {
-                    this.animationFrameId = null;
-                    return;
-                }
-
-                const imageData = this.convertVideoFrameToImageData(this.videoElement);
-                const now = performance.now();
-
-                const context: TrackingContext = {
-                    videoTime: (this.videoElement.currentTime * 1000) || 0.0001,
-                    systemTime: now,
-                    frameId: ++this.fallbackFrameCount,
-                };
-
-                if (this.frameCallback) void this.frameCallback(imageData, context);
-                this.animationFrameId = requestAnimationFrame(process);
+            // Re-schedule
+            if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+                this.videoFrameId = this.videoElement.requestVideoFrameCallback(process);
+            } else {
+                this.animationFrameId = requestAnimationFrame(() => process(performance.now()));
             }
-            this.animationFrameId = requestAnimationFrame(process);
+        };
+
+        // Initial trigger
+        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+            console.log("Using requestVideoFrameCallback (Standard)");
+            this.videoFrameId = this.videoElement.requestVideoFrameCallback(process);
+        } else {
+            console.log("Using requestAnimationFrame (Legacy)");
+            this.animationFrameId = requestAnimationFrame(() => process(performance.now()));
         }
     }
 
