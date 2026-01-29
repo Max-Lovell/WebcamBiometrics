@@ -339,12 +339,27 @@ export function obtainEyePatch(
     // Step 7: Generate the crop of the eyes
     const top_eyes_patch = warpedLandmarks[151];
     const bottom_eyes_patch = warpedLandmarks[195];
+
+    const cropY = Math.round(top_eyes_patch[1]);
+    let cropHeight = Math.round(bottom_eyes_patch[1] - top_eyes_patch[1]);
+
+    // Check for the "Inverted Eye" (Negative Height)
+    if (cropHeight <= 0) {
+        console.warn(`[MathUtils] Invalid Eye Crop Height: ${cropHeight} (Warp Matrix Flip). Defaulting to 1px.`);
+        cropHeight = 1;
+    }
+
+    // Check for "Out of Bounds" (Y + Height > Image Height)
+    if (cropY + cropHeight > warped.height) {
+        cropHeight = Math.max(1, warped.height - cropY);
+    }
+
     const eye_patch = cropImageData(
         warped,
         0,
-        Math.round(top_eyes_patch[1]),
+        cropY,
         warped.width,
-        Math.round(bottom_eyes_patch[1] - top_eyes_patch[1])
+        cropHeight
     );
 
     // Step 8: Resize the eye patch to the desired output size
