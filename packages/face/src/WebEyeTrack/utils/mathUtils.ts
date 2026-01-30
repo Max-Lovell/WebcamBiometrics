@@ -197,24 +197,41 @@ export function resizeImageData(
     const dst = output.data;
     const { width: srcWidth, height: srcHeight } = source;
 
-    const scaleX = srcWidth / outWidth;
-    const scaleY = srcHeight / outHeight;
+    // -1 to align with pixel centers for bilinear calc
+    const xRatio = (srcWidth - 1) / outWidth;
+    const yRatio = (srcHeight - 1) / outHeight;
 
-    for (let dy = 0; dy < outHeight; dy++) {
-        for (let dx = 0; dx < outWidth; dx++) {
-            const x = Math.min(Math.floor(dx * scaleX), srcWidth - 1);
-            const y = Math.min(Math.floor(dy * scaleY), srcHeight - 1);
+    for (let y = 0; y < outHeight; y++) {
+        for (let x = 0; x < outWidth; x++) {
+            const xDiff = Math.floor(xRatio * x);
+            const yDiff = Math.floor(yRatio * y);
+            const xWeight = (xRatio * x) - xDiff;
+            const yWeight = (yRatio * y) - yDiff;
 
-            const srcIdx = (y * srcWidth + x) * 4;
-            const dstIdx = (dy * outWidth + dx) * 4;
+            const index = (y * outWidth + x) * 4;
+            // 4 neighbors: a=TL, b=TR, c=BL, d=BR
+            const aIdx = (yDiff * srcWidth + xDiff) * 4;
+            const bIdx = (yDiff * srcWidth + (xDiff + 1)) * 4;
+            const cIdx = ((yDiff + 1) * srcWidth + xDiff) * 4;
+            const dIdx = ((yDiff + 1) * srcWidth + (xDiff + 1)) * 4;
 
-            for (let c = 0; c < 4; c++) {
-                dst[dstIdx + c] = src[srcIdx + c];
+            for (let i = 0; i < 3; i++) { // RGB only
+                const a = src[aIdx + i];
+                const b = src[bIdx + i];
+                const c = src[cIdx + i];
+                const d = src[dIdx + i];
+
+                // Bilinear interpolation formula
+                const pixel = a * (1 - xWeight) * (1 - yWeight) +
+                    b * xWeight * (1 - yWeight) +
+                    c * yWeight * (1 - xWeight) +
+                    d * xWeight * yWeight;
+
+                dst[index + i] = pixel;
             }
+            dst[index + 3] = 255; // Alpha
         }
     }
-    return output;
-
     return output;
 }
 
