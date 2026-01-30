@@ -109,13 +109,13 @@ export default class WebEyeTrackProxy {
       // Prevent default browser zooming/scrolling behavior if necessary
       if (e.isPrimary === false) return; // Optional: Ignore multi-touch secondary fingers
 
-      const viewWidth = document.documentElement.clientWidth;
-      const viewHeight = document.documentElement.clientHeight;
+      const viewWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewHeight = document.documentElement.clientHeight || window.innerHeight;
 
-      // Normalize coordinates [-0.5, 0.5]
-      const normX = (e.clientX / viewWidth) - 0.5;
-      const normY = (e.clientY / viewHeight) - 0.5;
-
+      // Normalize coordinates [-0.5, 0.5] // TODO: should this be e.clientX/Y or?
+      const normX = Math.max(-0.5, Math.min(0.5, (e.clientX / viewWidth) - 0.5));
+      const normY = Math.max(-0.5, Math.min(0.5, (e.clientY / viewHeight) - 0.5));
+      
       console.log(`[Input] Pointer at (${normX.toFixed(3)}, ${normY.toFixed(3)}) type=${e.pointerType}`);
       this.worker.postMessage({ type: 'click', payload: { x: normX, y: normY }});
     };
