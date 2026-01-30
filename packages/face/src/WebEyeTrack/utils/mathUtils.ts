@@ -279,17 +279,21 @@ export function compareImageData(
 export function obtainEyePatch(
     frame: ImageData,
     faceLandmarks: Point[],
-    facePaddingCoefs: [number, number] = [0.4, 0.2],
+    facePaddingCoefs: [number, number] = [0.4, 0.2], // Allow extracted region around non-moving landmarks
     faceCropSize: number = 512,
     dstImgSize: [number, number] = [512, 128]
 ): ImageData {
 
-    // Step 3: Prepare src and dst
-    const center = faceLandmarks[4];
-    const leftTop = faceLandmarks[103];
-    const leftBottom = faceLandmarks[150];
-    const rightTop = faceLandmarks[332];
-    const rightBottom = faceLandmarks[379];
+    // TODO: clean up extracted region:
+        // fix eyes drifting down when head moved up, top black bar on clipping
+        // use more stable and less protruding landmarks
+
+    // Prepare src and dst
+    const center = faceLandmarks[4]; //suggested: 168 // original: 4
+    const leftTop = faceLandmarks[103]; //105 // original: 103
+    const leftBottom = faceLandmarks[150]; //118 // original: 150
+    const rightTop = faceLandmarks[332]; //334 // original: 332
+    const rightBottom = faceLandmarks[379]; //347 // original: 379
 
     let srcPts: Point[] = [leftTop, leftBottom, rightBottom, rightTop];
 

@@ -117,6 +117,7 @@ export default class WebEyeTrackProxy {
       const normY = Math.max(-0.5, Math.min(0.5, (e.clientY / viewHeight) - 0.5));
       
       console.log(`[Input] Pointer at (${normX.toFixed(3)}, ${normY.toFixed(3)}) type=${e.pointerType}`);
+      // TODO: pass e.timeStamp to worker, add a result buffer to WebEyeTrack, line click time up to closes frame time.
       this.worker.postMessage({ type: 'click', payload: { x: normX, y: normY }});
     };
 

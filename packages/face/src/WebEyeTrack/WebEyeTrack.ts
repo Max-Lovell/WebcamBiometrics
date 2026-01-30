@@ -552,6 +552,7 @@ export default class WebEyeTrack {
       }
 
       // Enforce Total Max Points Limit - if points exceed the limit, we evict data to make room.
+      // TODO: implement Auto-Reset on Movement for high-confidence calibration points
       const TOTAL_LIMIT = this.maxCalibPoints + this.maxClickPoints;
 
       while (
