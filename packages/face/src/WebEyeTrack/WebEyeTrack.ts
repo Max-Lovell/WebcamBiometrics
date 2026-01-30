@@ -62,6 +62,7 @@ export default class WebEyeTrack {
   private blazeGaze: BlazeGaze;
   private faceLandmarkerClient: FaceLandmarkerClient;
   private faceWidthCm: number = 15;
+  private faceWidthComputed: boolean = false;
   private perspectiveMatrixSet: boolean = false;
   private perspectiveMatrix: Matrix = new Matrix(4, 4);
   private intrinsicsMatrixSet: boolean = false;
@@ -75,9 +76,9 @@ export default class WebEyeTrack {
   public latestMouseClick: { x: number, y: number, timestamp: number } | null = null;
   public latestGazeResult: GazeResult | null = null;
 
-  private smoothedFaceOrigin: number[] = [0, 0, 60]; // Default start guess
-  private originAlpha: number = 0.1; // Smoothing factor (0.1 = heavy smoothing, 0.9 = reactive)
-  private widthAlpha: number = 0.05; // Smoothing factor (lower = smoother but slower to adapt)
+  // private smoothedFaceOrigin: number[] = [0, 0, 60]; // Default start guess
+  // private originAlpha: number = 0.1; // Smoothing factor (0.1 = heavy smoothing, 0.9 = reactive)
+  // private widthAlpha: number = 0.05; // Smoothing factor (lower = smoother but slower to adapt)
 
   // Separate buffers for calibration (persistent) vs clickstream (ephemeral) points
   public calibData: {
@@ -400,11 +401,11 @@ export default class WebEyeTrack {
 
   computeFaceOrigin3D(frame: ImageData, normFaceLandmarks: Point[], faceLandmarks: Point[], faceRT: Matrix): number[] {
     // Re-estimate face width to stop wobble
-    const currentFaceWidth = estimateFaceWidth(faceLandmarks);
+    // const currentFaceWidth = estimateFaceWidth(faceLandmarks);
 
-    // Update running average to smooth out wobble - allow update between 10-20cm to reject glitches
-    if (currentFaceWidth > 10 && currentFaceWidth < 22) {
-      this.faceWidthCm = (this.faceWidthCm * (1 - this.widthAlpha)) + (currentFaceWidth * this.widthAlpha);
+    if (!this.faceWidthComputed) {
+      this.faceWidthCm = estimateFaceWidth(faceLandmarks);
+      this.faceWidthComputed = true;
     }
 
     // Perform 3D face reconstruction and determine the pose in 3d cm space
@@ -419,28 +420,28 @@ export default class WebEyeTrack {
       this.latestGazeResult?.faceOrigin3D?.[2] ?? 60
     );
 
-    const rawOrigin = computeFaceOrigin3D(metricFace);
-    // Get distance
-    const dist = Math.hypot(
-        rawOrigin[0] - this.smoothedFaceOrigin[0],
-        rawOrigin[1] - this.smoothedFaceOrigin[1],
-        rawOrigin[2] - this.smoothedFaceOrigin[2]
-    );
+    return computeFaceOrigin3D(metricFace);
+    // // Get distance
+    // const dist = Math.hypot(
+    //     rawOrigin[0] - this.smoothedFaceOrigin[0],
+    //     rawOrigin[1] - this.smoothedFaceOrigin[1],
+    //     rawOrigin[2] - this.smoothedFaceOrigin[2]
+    // );
+    //
+    // // Apply Low-Pass Filter to smooth out small z-changes
+    // if (dist > 10) {
+    //   // User moved head quickly, reset filter
+    //   this.smoothedFaceOrigin = rawOrigin;
+    // } else {
+    //   // User is sitting still, smooth the jitter
+    //   this.smoothedFaceOrigin = [
+    //     this.smoothedFaceOrigin[0] * (1 - this.originAlpha) + rawOrigin[0] * this.originAlpha,
+    //     this.smoothedFaceOrigin[1] * (1 - this.originAlpha) + rawOrigin[1] * this.originAlpha,
+    //     this.smoothedFaceOrigin[2] * (1 - this.originAlpha) + rawOrigin[2] * this.originAlpha,
+    //   ];
+    // }
 
-    // Apply Low-Pass Filter to smooth out small z-changes
-    if (dist > 10) {
-      // User moved head quickly, reset filter
-      this.smoothedFaceOrigin = rawOrigin;
-    } else {
-      // User is sitting still, smooth the jitter
-      this.smoothedFaceOrigin = [
-        this.smoothedFaceOrigin[0] * (1 - this.originAlpha) + rawOrigin[0] * this.originAlpha,
-        this.smoothedFaceOrigin[1] * (1 - this.originAlpha) + rawOrigin[1] * this.originAlpha,
-        this.smoothedFaceOrigin[2] * (1 - this.originAlpha) + rawOrigin[2] * this.originAlpha,
-      ];
-    }
-
-    return this.smoothedFaceOrigin;
+    // return this.smoothedFaceOrigin;
   }
 
   prepareInput(frame: ImageData | VideoFrame, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
