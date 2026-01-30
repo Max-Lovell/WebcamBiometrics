@@ -41,7 +41,7 @@ function generateSupport(
     const batchPatches = tf.stack( // creates new combined tensor from pixel tensors below
         eyePatches.map(patch => tf.browser.fromPixels(patch)), 0) // fromPixels creates new tensor for every image patch in loop.
         .toFloat() // toFloat, div, scalar also create intermediate tensors
-        .div(tf.scalar(255.0));
+        .div(tf.scalar(255.0)); // TODO: does network expect [-1, 1]? e.g. .div(tf.scalar(127.5)).sub(tf.scalar(1.0));
 
     const supportX: SupportX = {
       eyePatches: batchPatches,
@@ -540,45 +540,53 @@ export default class WebEyeTrack {
         normPogs
       );
 
-      // === ROUTE TO APPROPRIATE BUFFER ===
-      const batchSize = supportX.eyePatches.shape[0];  // Number of points in this batch
-
+      // add the new data to the appropriate buffer first
       if (ptType === 'calib') {
-        // Calculate total calibration points after adding this batch
-        const currentCalibPoints = this.calibData.calibSupportX.reduce((sum, s) => sum + s.eyePatches.shape[0], 0);
-        const newTotal = currentCalibPoints + batchSize;
-
-        // Check calibration buffer capacity
-        if (newTotal > this.maxCalibPoints) {
-          console.error(`❌ Calibration buffer full (${this.maxCalibPoints} points max).`);
-          console.error(`   Current: ${currentCalibPoints} points, trying to add: ${batchSize} points`);
-          console.error(`   Total would be: ${newTotal} points (exceeds limit by ${newTotal - this.maxCalibPoints})`);
-          console.error(`   Hint: Call clearCalibrationBuffer() to start a new calibration session.`);
-
-          // Dispose the new point's tensors since we can't store it
-          tf.dispose([supportX.eyePatches, supportX.headVectors, supportX.faceOrigins3D, supportY]);
-
-          // Don't proceed with training
-          return;
-        }
-
-        // Add to calibration buffer
         this.calibData.calibSupportX.push(supportX);
         this.calibData.calibSupportY.push(supportY);
         this.calibData.calibTimestamps.push(Date.now());
-
-        console.log(`✅ Added ${batchSize} calibration point(s) - Total: ${newTotal}/${this.maxCalibPoints} points in ${this.calibData.calibSupportX.length} batch(es)`);
       } else {
-        // Add to clickstream buffer
         this.calibData.clickSupportX.push(supportX);
         this.calibData.clickSupportY.push(supportY);
         this.calibData.clickTimestamps.push(Date.now());
+      }
 
-        // Count total click points across all batches
-        const totalClickPoints = this.calibData.clickSupportX.reduce((sum, s) => sum + s.eyePatches.shape[0], 0);
-        const totalCalibPoints = this.calibData.calibSupportX.reduce((sum, s) => sum + s.eyePatches.shape[0], 0);
+      // Enforce Total Max Points Limit - if points exceed the limit, we evict data to make room.
+      const TOTAL_LIMIT = this.maxCalibPoints + this.maxClickPoints;
 
-        console.log(`✅ Added ${batchSize} click point(s) - Total: ${totalClickPoints} click points, ${totalCalibPoints} calib points`);
+      while (
+          (this.calibData.calibSupportX.length + this.calibData.clickSupportX.length) > TOTAL_LIMIT
+          ) {
+        // Eviction Strategy: Prevent "Elastic Banding"
+        // If we are over the limit, we prefer to evict old CALIBRATION data.
+        // This ensures that new correction clicks (which reflect your current posture)
+        // push out the old calibration points (which might reflect an old posture).
+
+        let evictedItem: SupportX | undefined;
+        let evictedY: tf.Tensor | undefined;
+
+        if (this.calibData.calibSupportX.length > 0) {
+          // Evict oldest calibration point (Fixes elastic band effect)
+          evictedItem = this.calibData.calibSupportX.shift();
+          evictedY = this.calibData.calibSupportY.shift();
+          this.calibData.calibTimestamps.shift();
+          // console.log('♻️ Evicted old calibration point to make room for new data.');
+        } else {
+          // Fallback: If no calibration data left, evict oldest click point
+          evictedItem = this.calibData.clickSupportX.shift();
+          evictedY = this.calibData.clickSupportY.shift();
+          this.calibData.clickTimestamps.shift();
+        }
+
+        // CRITICAL: Dispose memory to prevent leaks
+        if (evictedItem && evictedY) {
+          tf.dispose([
+            evictedItem.eyePatches,
+            evictedItem.headVectors,
+            evictedItem.faceOrigins3D,
+            evictedY
+          ]);
+        }
       }
 
       // === CONCATENATE FROM BOTH BUFFERS FOR TRAINING ===
