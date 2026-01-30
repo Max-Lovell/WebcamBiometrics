@@ -12,7 +12,7 @@ interface TrackerConfig {
 // import WebEyeTrackWorker from "worker-loader?inline=no-fallback!./WebEyeTrackWorker.ts";
 export default class WebEyeTrackProxy {
   private worker: Worker;
-  private clickHandler: ((e: MouseEvent) => void) | null = null;
+  private inputHandler: ((e: PointerEvent) => void) | null = null;
   private messageHandler: ((e: MessageEvent) => void) | null = null;
   private _disposed: boolean = false;
   private adaptResolve: (() => void) | null = null;
@@ -105,14 +105,22 @@ export default class WebEyeTrackProxy {
     })
 
     // Add mouse handler for re-calibration
-    this.clickHandler = (e: MouseEvent) => {
-      const normX = (e.clientX / window.innerWidth) - 0.5;
-      const normY = (e.clientY / window.innerHeight) - 0.5;
-      console.log(`[WebEyeTrackProxy] Click at (${normX}, ${normY})`);
+    this.inputHandler = (e: PointerEvent) => {
+      // Prevent default browser zooming/scrolling behavior if necessary
+      if (e.isPrimary === false) return; // Optional: Ignore multi-touch secondary fingers
+
+      const viewWidth = document.documentElement.clientWidth;
+      const viewHeight = document.documentElement.clientHeight;
+
+      // Normalize coordinates [-0.5, 0.5]
+      const normX = (e.clientX / viewWidth) - 0.5;
+      const normY = (e.clientY / viewHeight) - 0.5;
+
+      console.log(`[Input] Pointer at (${normX.toFixed(3)}, ${normY.toFixed(3)}) type=${e.pointerType}`);
       this.worker.postMessage({ type: 'click', payload: { x: normX, y: normY }});
     };
 
-    window.addEventListener('click', this.clickHandler);
+    window.addEventListener('pointerdown', this.inputHandler);
   }
 
   // Callback for gaze results
@@ -211,9 +219,9 @@ export default class WebEyeTrackProxy {
     }
 
     // Remove window click listener
-    if (this.clickHandler) {
-      window.removeEventListener('click', this.clickHandler);
-      this.clickHandler = null;
+    if (this.inputHandler) {
+      window.removeEventListener('pointerdown', this.inputHandler);
+      this.inputHandler = null;
     }
 
     // Remove message handler
