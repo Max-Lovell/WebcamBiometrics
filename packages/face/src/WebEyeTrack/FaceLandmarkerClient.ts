@@ -15,6 +15,9 @@ export default class FaceLandmarkerClient {
       // Facelandmarker is broken for vite (self.import() error) so below is a hack to get it working
       // Noted here: https://github.com/google-ai-edge/mediapipe/issues/5257
       // TODO: find safer fix than eval here??
+      // Find new files at https://www.npmjs.com/package/@mediapipe/tasks-vision
+      // Current version 10.32
+        // wasm: https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm
       const response = await fetch(filesetResolver.wasmLoaderPath);
       // Use indirect eval to execute the script in the global scope. This is required for the library to find the ModuleFactory.
       (0, eval)(await response.text());
@@ -24,7 +27,7 @@ export default class FaceLandmarkerClient {
 
       return this.faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
-          modelAssetPath: `/wasm/face_landmarker.task`,
+          modelAssetPath: `/wasm/face_landmarker.task`, //https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
           delegate: "GPU",
         },
         outputFaceBlendshapes: true,
