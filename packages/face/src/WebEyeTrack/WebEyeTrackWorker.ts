@@ -46,8 +46,9 @@ self.onmessage = async (e: MessageEvent) => {
           // add rPPG
 
           // Attach context to result so main thread can log
-          const finalResult = {
-            ...gazeResult,
+          const finalResult: BiometricsResult = {
+            faceLandmarker: faceResult,
+            webEyeTrack: gazeResult,
             // Attach context so main thread can log it
             context: context,
             // Default to 0s if no face detected or buffer not full
