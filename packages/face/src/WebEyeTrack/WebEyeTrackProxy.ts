@@ -1,4 +1,3 @@
-import WebcamClient from "../Core/WebcamClient.ts";
 import type {BiometricsResult, TrackingContext} from "./types";
 
 interface TrackerConfig {
@@ -20,7 +19,7 @@ export default class WebEyeTrackProxy {
 
   public status: 'idle' | 'inference' | 'calib' = 'idle';
 
-  constructor(webcamClient: WebcamClient, config: TrackerConfig = {}) {
+  constructor(config: TrackerConfig = {}) {
 
     // Initialize the WebEyeTrackWorker - CHANGED to use modern syntax for automatic bundling with vite.
     this.worker = new Worker(new URL('./WebEyeTrackWorker.ts', import.meta.url), {
@@ -34,31 +33,6 @@ export default class WebEyeTrackProxy {
         case 'ready':
           console.log('[WebEyeTrackProxy] Worker is ready');
 
-          // Start the webcam client and set up the frame callback
-          void webcamClient.startWebcam(async (frame: ImageData | VideoFrame, context: TrackingContext) => {
-            // Send the frame to the worker for processing
-            if (this.status === 'idle') {
-              // extract the buffer to transfer ownership
-              if (frame instanceof VideoFrame) {
-                this.worker.postMessage({
-                  type: 'step',
-                  payload: { frame, context }
-                }, [frame]);
-              } else if(frame instanceof ImageData) {
-                  const buffer = frame.data.buffer; // Note: frame.data is an overview of raw memory in frame.data.buffer
-
-                  this.worker.postMessage({
-                    type: 'step',
-                    payload: { frame, context }
-                  }, [buffer]) // Transfer memory ownership from main thread to worker (auto-populates 'frame' object), rather than copy.
-                }
-              } else {
-                // CRITICAL: VideoFrames MUST be closed manually - not garbage collected automatically and holds GPU resources.
-                if (frame instanceof VideoFrame) {
-                  frame.close();
-                }
-            }
-          });
           break;
 
         case 'stepResult':
@@ -124,11 +98,37 @@ export default class WebEyeTrackProxy {
     window.addEventListener('pointerdown', this.inputHandler);
   }
 
+  public async processFrame(frame: VideoFrame | ImageData, context: TrackingContext): Promise<void> {
+    if (this._disposed) return;
+
+    // Simple backpressure: if worker is busy, drop the frame
+    if (this.status !== 'idle') {
+      // CRITICAL: If we drop a VideoFrame, we MUST close it, otherwise GPU memory leaks.
+      if (frame instanceof VideoFrame) {
+        frame.close();
+      }
+      return;
+    }
+
+    // Send to worker
+    if (frame instanceof VideoFrame) {
+      this.worker.postMessage({
+        type: 'step',
+        payload: { frame, context }
+      }, [frame]); // Transfer ownership
+    } else if (frame instanceof ImageData) {
+      const buffer = frame.data.buffer;
+      this.worker.postMessage({
+        type: 'step',
+        payload: { frame, context }
+      }, [buffer]); // Transfer buffer
+    }
+  }
+
   // Callback for gaze results
   onGazeResults: (gazeResult: BiometricsResult) => void = () => {
     console.warn('onGazeResults callback not set');
   }
-
 
   /**
    * Perform calibration adaptation
