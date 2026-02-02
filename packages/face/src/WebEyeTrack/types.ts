@@ -14,17 +14,12 @@ export interface WebEyeTrackResult {
   eyePatch: ImageData; // [H, W, 3] - RGB image of the eye region
   headVector: Array<number>; // [3,] - Head vector in camera coordinates
   faceOrigin3D: Array<number>; // X, Y, Z
-
   // Face Reconstruction
-  // metricFace: Matrix;
-  metric_transform: Matrix; // [4, 4]
-
+  metric_transform: Matrix; // metricFace: Matrix; [4, 4]
   // Gaze state (blinking)
   gazeState: 'open' | 'closed';
-
   // PoG (normalized screen coordinates)
   normPog: Array<number>; // [2,] - Normalized screen coordinates
-
   // Meta data
   durations: Record<string, number>; // seconds
   timestamp: number; // milliseconds
@@ -42,7 +37,8 @@ export interface RPPGResult {
 export interface BiometricsResult {
   faceLandmarker: FaceLandmarkerResult;
   webEyeTrack: WebEyeTrackResult;
-  rPPG: RPPGResult;
+  // rPPG: RPPGResult;
+  context: TrackingContext;
 }
 
 export interface TrackingContext {
