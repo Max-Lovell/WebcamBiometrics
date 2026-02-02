@@ -2,13 +2,10 @@
 
 import WebEyeTrack from './WebEyeTrack';
 // import type { TrackingContext } from './types';
-import { FACE_ROIS } from './utils/roiUtils';
-import { HeartRateEstimator } from '@webcambiometrics/vitals';
 
 let tracker: WebEyeTrack;
 
 // Instantiate heart rate estimator in global scope
-const foreheadEstimator = new HeartRateEstimator(10);
 
 
 let status: 'idle' | 'inference' | 'calib' = 'idle';
@@ -41,36 +38,13 @@ self.onmessage = async (e: MessageEvent) => {
           const gazeResult = await tracker.step(frame, context.videoTime);
           // console.log('gazeResult', gazeResult);
           // add rPPG
-          let vitalsResult = null;
-          if (gazeResult.facialLandmarks && gazeResult.facialLandmarks.length > 0) {
-            // Convert ROI indices to Pixel Coordinates
-            // gazeResult.facialLandmarks are normalized (0.0 - 1.0)
-            const foreheadPoints = FACE_ROIS.forehead.map((index: number) => {
-              const landmark = gazeResult.facialLandmarks[index];
-              return {
-                x: landmark.x * frame.width,  // Scale to pixels
-                y: landmark.y * frame.height
-              };
-            });
 
-            // 3. Process the frame using the persistent estimator
-            vitalsResult = foreheadEstimator.processFrame(
-                frame,
-                foreheadPoints,
-                context.videoTime
-            );
-          }
           // Attach context to result so main thread can log
           const finalResult = {
             ...gazeResult,
             // Attach context so main thread can log it
             context: context,
             // Default to 0s if no face detected or buffer not full
-            vitals: {
-              bpm: vitalsResult ? vitalsResult.bpm : 0,
-              wave: vitalsResult ? vitalsResult.signal : 0,
-              confidence: vitalsResult ? vitalsResult.confidence : 0
-            }
           };
           self.postMessage({ type: 'stepResult', result: finalResult });
         } catch (err) {
