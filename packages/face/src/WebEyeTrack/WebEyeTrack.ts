@@ -4,7 +4,7 @@ import {Matrix} from 'ml-matrix';
 
 import type {GazeResult, Point} from "./types";
 import BlazeGaze from "./BlazeGaze";
-import FaceLandmarkerClient from "./FaceLandmarkerClient";
+import FaceLandmarkerClient from "../Core/FaceLandmarkerClient.ts";
 import {
   applyAffineMatrix,
   computeAffineMatrixML,

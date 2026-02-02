@@ -1,4 +1,4 @@
-import type { TrackingContext } from './types';
+import type { TrackingContext } from '../WebEyeTrack/types.ts';
 export type VideoFrameData = VideoFrame | ImageData;
 
 export default class WebcamClient {
@@ -34,9 +34,9 @@ export default class WebcamClient {
                     // width: { ideal: 1920 },
                     // height: { ideal: 1080 },
                     // frameRate: { ideal: 60 },
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    frameRate: { ideal: 30 },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 60 },
                     facingMode: "user"
                 },
                 audio: false

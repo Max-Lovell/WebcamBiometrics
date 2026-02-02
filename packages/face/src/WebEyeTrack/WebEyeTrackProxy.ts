@@ -1,4 +1,4 @@
-import WebcamClient from "./WebcamClient";
+import WebcamClient from "../Core/WebcamClient.ts";
 import type {GazeResult, TrackingContext} from "./types";
 
 interface TrackerConfig {
