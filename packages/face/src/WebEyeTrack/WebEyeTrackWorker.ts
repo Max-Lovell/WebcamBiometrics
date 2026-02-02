@@ -2,7 +2,9 @@
 
 import WebEyeTrack from './WebEyeTrack';
 // import type { TrackingContext } from './types';
+import FaceLandmarkerClient from '../Core/FaceLandmarkerClient';
 
+let faceLandmarker: FaceLandmarkerClient;
 let tracker: WebEyeTrack;
 
 // Instantiate heart rate estimator in global scope
@@ -15,6 +17,8 @@ self.onmessage = async (e: MessageEvent) => {
 
   switch (type) {
     case 'init':
+      faceLandmarker = new FaceLandmarkerClient();
+      await faceLandmarker.initialize();
       tracker = new WebEyeTrack(
           payload?.maxPoints,        // backward compat
           payload?.clickTTL,
@@ -35,7 +39,8 @@ self.onmessage = async (e: MessageEvent) => {
         try {
           // TODO: move from "Stop-and-Wait" protocol to run BlazeGaze in parallel if have previous face mesh waiting (worth it?)
             // TODO: Make next frame start processing immediately using single-slot buffer where next frame is overridden with most recently received one whilst processing
-          const gazeResult = await tracker.step(frame, context.videoTime);
+          const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
+          const gazeResult = await tracker.step(frame, context.videoTime, faceResult);
           // console.log('gazeResult', gazeResult);
           // add rPPG
 

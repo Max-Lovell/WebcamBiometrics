@@ -1,10 +1,8 @@
-import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import * as tf from '@tensorflow/tfjs';
 import {Matrix} from 'ml-matrix';
 
 import type {GazeResult, Point} from "./types";
 import BlazeGaze from "./BlazeGaze";
-import FaceLandmarkerClient from "../Core/FaceLandmarkerClient.ts";
 import {
   applyAffineMatrix,
   computeAffineMatrixML,
@@ -19,6 +17,7 @@ import {
   translateMatrix
 } from "./utils/mathUtils";
 import {KalmanFilter2D} from "./utils/filter";
+import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 
 // Reference
 // https://mediapipe-studio.webapps.google.com/demo/face_landmarker
@@ -60,7 +59,6 @@ export default class WebEyeTrack {
 
   // Instance variables
   private blazeGaze: BlazeGaze;
-  private faceLandmarkerClient: FaceLandmarkerClient;
   private faceWidthCm: number = 15;
   private faceWidthComputed: boolean = false;
   private perspectiveMatrixSet: boolean = false;
@@ -118,7 +116,6 @@ export default class WebEyeTrack {
 
     // Initialize services
     this.blazeGaze = new BlazeGaze();
-    this.faceLandmarkerClient = new FaceLandmarkerClient();
     this.kalmanFilter = new KalmanFilter2D();
 
     // Storing configs with backward compatibility
@@ -151,7 +148,6 @@ export default class WebEyeTrack {
   }
 
   async initialize(modelPath?: string): Promise<void> {
-    await this.faceLandmarkerClient.initialize();
     await this.blazeGaze.loadModel(modelPath);
     await this.warmup();
     this.loaded = true;
@@ -684,10 +680,8 @@ export default class WebEyeTrack {
     }
   }
 
-  async step(frame: ImageData | VideoFrame, timestamp: number): Promise<GazeResult> {
+  async step(frame: ImageData | VideoFrame, timestamp: number, result: FaceLandmarkerResult | null): Promise<GazeResult> {
     const tic1 = performance.now();
-    let result = await this.faceLandmarkerClient.processFrame(frame, timestamp) as FaceLandmarkerResult | null;
-    const tic2 = performance.now();
     // result = null; // For testing purposes, we can set result to null to simulate no face detected
     if (!result || !result.faceLandmarks || result.faceLandmarks.length === 0) {
       return {
@@ -701,8 +695,6 @@ export default class WebEyeTrack {
         gazeState: 'closed', // Default to closed state if no landmarks
         normPog: [0, 0], // Placeholder for normalized point of gaze
         durations: {
-          faceLandmarker: tic2 - tic1,
-          prepareInput: 0,
           blazeGaze: 0,
           kalmanFilter: 0,
           total: 0
@@ -725,6 +717,7 @@ export default class WebEyeTrack {
     // gaze_state = 'closed';
 
     // If 'closed' return (0, 0)
+    console.log(result)
     if (gaze_state === 'closed') {
       return {
         facialLandmarks: result.faceLandmarks[0],
@@ -737,8 +730,6 @@ export default class WebEyeTrack {
         gazeState: gaze_state,
         normPog: [0, 0],
         durations: {
-          faceLandmarker: tic2 - tic1,
-          prepareInput: tic3 - tic2,
           blazeGaze: 0, // No BlazeGaze inference if eyes are closed
           kalmanFilter: 0, // No Kalman filter step if eyes are closed
           total: tic3 - tic1
@@ -777,16 +768,14 @@ export default class WebEyeTrack {
 
     // Apply Kalman filter to smooth the gaze point
     const kalmanOutput = this.kalmanFilter.step(normPog[0]);
-    const tic5 = performance.now();
 
     // Clip the output to the range of [-0.5, 0.5]
     kalmanOutput[0] = Math.max(-0.5, Math.min(0.5, kalmanOutput[0]));
     kalmanOutput[1] = Math.max(-0.5, Math.min(0.5, kalmanOutput[1]));
 
+    const tic5 = performance.now();
     // Log the timings
     const durations = {
-      faceLandmarker: tic2 - tic1,
-      prepareInput: tic3 - tic2,
       blazeGaze: tic4 - tic3,
       kalmanFilter: tic5 - tic4,
       total: tic5 - tic1
@@ -859,10 +848,6 @@ export default class WebEyeTrack {
     // Dispose child components if they have dispose methods
     if ('dispose' in this.blazeGaze && typeof this.blazeGaze.dispose === 'function') {
       this.blazeGaze.dispose();
-    }
-
-    if ('dispose' in this.faceLandmarkerClient && typeof this.faceLandmarkerClient.dispose === 'function') {
-      this.faceLandmarkerClient.dispose();
     }
 
     this._disposed = true;
