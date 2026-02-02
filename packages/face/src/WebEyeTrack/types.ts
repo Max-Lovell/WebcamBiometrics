@@ -1,4 +1,4 @@
-import type {NormalizedLandmark, Matrix, Classifications} from "@mediapipe/tasks-vision";
+import type {Matrix, FaceLandmarkerResult} from "@mediapipe/tasks-vision";
 import type { RGBSample } from "@webcambiometrics/vitals";
 
 // export type Point = [number, number];
@@ -9,13 +9,7 @@ export enum TrackingStatus {
   SUCCESS = 1,
 }
 
-export interface GazeResult {
-
-  // Inputs
-  facialLandmarks: NormalizedLandmark[]; // [N, 5]
-  faceRt: Matrix;
-  faceBlendshapes: Classifications[]; // [N, 1]
-
+export interface WebEyeTrackResult {
   // Preprocessing
   eyePatch: ImageData; // [H, W, 3] - RGB image of the eye region
   headVector: Array<number>; // [3,] - Head vector in camera coordinates
@@ -34,13 +28,21 @@ export interface GazeResult {
   // Meta data
   durations: Record<string, number>; // seconds
   timestamp: number; // milliseconds
+}
 
+export interface RPPGResult {
   //rPPG
   roiSignals?: {
     forehead: RGBSample;
     leftCheek: RGBSample;
     rightCheek: RGBSample;
   };
+}
+
+export interface BiometricsResult {
+  faceLandmarker: FaceLandmarkerResult;
+  webEyeTrack: WebEyeTrackResult;
+  rPPG: RPPGResult;
 }
 
 export interface TrackingContext {

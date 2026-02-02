@@ -1,7 +1,7 @@
 import * as tf from '@tensorflow/tfjs';
 import {Matrix} from 'ml-matrix';
 
-import type {GazeResult, Point} from "./types";
+import type {Point, WebEyeTrackResult} from "./types";
 import BlazeGaze from "./BlazeGaze";
 import {
   applyAffineMatrix,
@@ -72,7 +72,7 @@ export default class WebEyeTrack {
   // Public variables
   public loaded: boolean = false;
   public latestMouseClick: { x: number, y: number, timestamp: number } | null = null;
-  public latestGazeResult: GazeResult | null = null;
+  public latestGazeResult: WebEyeTrackResult | null = null;
 
   // private smoothedFaceOrigin: number[] = [0, 0, 60]; // Default start guess
   // private originAlpha: number = 0.1; // Smoothing factor (0.1 = heavy smoothing, 0.9 = reactive)
@@ -680,14 +680,11 @@ export default class WebEyeTrack {
     }
   }
 
-  async step(frame: ImageData | VideoFrame, timestamp: number, result: FaceLandmarkerResult | null): Promise<GazeResult> {
+  async step(frame: ImageData | VideoFrame, timestamp: number, result: FaceLandmarkerResult | null): Promise<WebEyeTrackResult> {
     const tic1 = performance.now();
     // result = null; // For testing purposes, we can set result to null to simulate no face detected
     if (!result || !result.faceLandmarks || result.faceLandmarks.length === 0) {
       return {
-        facialLandmarks: [],
-        faceRt: {rows: 0, columns: 0, data: []}, // Placeholder for face transformation matrix
-        faceBlendshapes: [],
         eyePatch: new ImageData(1, 1), // Placeholder for eye patch
         headVector: [0, 0, 0], // Placeholder for head vector
         faceOrigin3D: [0, 0, 0], // Placeholder for face
@@ -717,12 +714,9 @@ export default class WebEyeTrack {
     // gaze_state = 'closed';
 
     // If 'closed' return (0, 0)
-    console.log(result)
+    // console.log(result)
     if (gaze_state === 'closed') {
       return {
-        facialLandmarks: result.faceLandmarks[0],
-        faceRt: result.facialTransformationMatrixes[0],
-        faceBlendshapes: result.faceBlendshapes,
         eyePatch: eyePatch,
         headVector: headVector,
         faceOrigin3D: faceOrigin3D,
@@ -782,10 +776,7 @@ export default class WebEyeTrack {
     };
 
     // Return GazeResult
-    let gaze_result: GazeResult = {
-      facialLandmarks: result.faceLandmarks[0],
-      faceRt: result.facialTransformationMatrixes[0],
-      faceBlendshapes: result.faceBlendshapes,
+    let gaze_result: WebEyeTrackResult = {
       eyePatch: eyePatch,
       headVector: headVector,
       faceOrigin3D: faceOrigin3D,

@@ -1,5 +1,5 @@
 import WebcamClient from "../Core/WebcamClient.ts";
-import type {GazeResult, TrackingContext} from "./types";
+import type {BiometricsResult, TrackingContext} from "./types";
 
 interface TrackerConfig {
   maxPoints?: number;
@@ -63,7 +63,7 @@ export default class WebEyeTrackProxy {
 
         case 'stepResult':
           // Handle gaze results
-          const gazeResult: GazeResult = mess.data.result;
+          const gazeResult: BiometricsResult = mess.data.result;
           this.onGazeResults(gazeResult);
           break;
 
@@ -115,7 +115,7 @@ export default class WebEyeTrackProxy {
       // Normalize coordinates [-0.5, 0.5] // TODO: should this be e.clientX/Y or?
       const normX = Math.max(-0.5, Math.min(0.5, (e.clientX / viewWidth) - 0.5));
       const normY = Math.max(-0.5, Math.min(0.5, (e.clientY / viewHeight) - 0.5));
-      
+
       console.log(`[Input] Pointer at (${normX.toFixed(3)}, ${normY.toFixed(3)}) type=${e.pointerType}`);
       // TODO: pass e.timeStamp to worker, add a result buffer to WebEyeTrack, line click time up to closes frame time.
       this.worker.postMessage({ type: 'click', payload: { x: normX, y: normY }});
@@ -125,7 +125,7 @@ export default class WebEyeTrackProxy {
   }
 
   // Callback for gaze results
-  onGazeResults: (gazeResult: GazeResult) => void = () => {
+  onGazeResults: (gazeResult: BiometricsResult) => void = () => {
     console.warn('onGazeResults callback not set');
   }
 

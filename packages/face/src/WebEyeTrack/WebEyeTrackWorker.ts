@@ -40,6 +40,7 @@ self.onmessage = async (e: MessageEvent) => {
           // TODO: move from "Stop-and-Wait" protocol to run BlazeGaze in parallel if have previous face mesh waiting (worth it?)
             // TODO: Make next frame start processing immediately using single-slot buffer where next frame is overridden with most recently received one whilst processing
           const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
+          if(!faceResult) return
           const gazeResult = await tracker.step(frame, context.videoTime, faceResult);
           // console.log('gazeResult', gazeResult);
           // add rPPG
