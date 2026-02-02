@@ -46,5 +46,5 @@ export interface TrackingContext {
   systemTime: number; // Source: metadata.expectedDisplayTime (rVFC) OR performance.now() (fallback)
   frameId: number; // Source: metadata.presentedFrames (rVFC) OR incrementing counter (fallback)
   rawMetadata?: VideoFrameCallbackMetadata; // raw data for debugging (optional incase fallback)
-  trace: Array<{ step: string; timestamp: number }>;
+  trace?: Array<{ step: string; timestamp: number }>;
 }

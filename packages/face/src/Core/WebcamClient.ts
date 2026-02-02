@@ -125,6 +125,7 @@ export default class WebcamClient {
                         videoTime: frame.timestamp / 1000, // micro to milli
                         systemTime: performance.now(),
                         frameId: 0, // Not available in this API
+                        trace: [{ step: 'start_webcam', timestamp: performance.now() }],
                     };
 
                     // Await the callback so we don't close the frame before the user is done with it.
@@ -152,6 +153,7 @@ export default class WebcamClient {
                 videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000 || 0.0001,
                 systemTime: now,
                 frameId: metadata?.presentedFrames || 0,
+                trace: [{ step: 'start_process_frames', timestamp: performance.now() }],
             };
 
             if (this.frameCallback) void this.frameCallback(imageData, context);

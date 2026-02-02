@@ -110,6 +110,7 @@ export default class WebEyeTrackProxy {
       return;
     }
 
+    context.trace?.push({ step: 'proxy_send', timestamp: performance.now() });
     // Send to worker
     if (frame instanceof VideoFrame) {
       this.worker.postMessage({

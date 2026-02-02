@@ -36,16 +36,23 @@ self.onmessage = async (e: MessageEvent) => {
         status = 'inference';
         self.postMessage({ type: 'statusUpdate', status: status});
         const { frame, context } = payload;
+        context.trace.push({ step: 'worker_start', timestamp: performance.now() });
         try {
           // TODO: move from "Stop-and-Wait" protocol to run BlazeGaze in parallel if have previous face mesh waiting (worth it?)
             // TODO: Make next frame start processing immediately using single-slot buffer where next frame is overridden with most recently received one whilst processing
+          context.trace.push({ step: 'facelandmarker_start', timestamp: performance.now() });
           const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
+          context.trace.push({ step: 'facelandmarker_end', timestamp: performance.now() });
           if(!faceResult) return
+          context.trace.push({ step: 'webeyetrack_start', timestamp: performance.now() });
           const gazeResult = await tracker.step(frame, context.videoTime, faceResult);
+          context.trace.push({ step: 'webeyetrack_end', timestamp: performance.now() });
+
           // console.log('gazeResult', gazeResult);
           // add rPPG
 
           // Attach context to result so main thread can log
+          context.trace.push({ step: 'worker_end', timestamp: performance.now() });
           const finalResult: BiometricsResult = {
             faceLandmarker: faceResult,
             webEyeTrack: gazeResult,
