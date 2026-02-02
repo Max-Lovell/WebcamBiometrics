@@ -98,8 +98,8 @@ export default class WebEyeTrackProxy {
     window.addEventListener('pointerdown', this.inputHandler);
   }
 
-  public async processFrame(frame: VideoFrame | ImageData, context: TrackingContext): Promise<void> {
-    if (this._disposed) return;
+  public async processFrame(frame: VideoFrame | ImageData, context: TrackingContext): Promise<boolean> {
+    if (this._disposed) return false;
 
     // Simple backpressure: if worker is busy, drop the frame
     if (this.status !== 'idle') {
@@ -107,7 +107,7 @@ export default class WebEyeTrackProxy {
       if (frame instanceof VideoFrame) {
         frame.close();
       }
-      return;
+      return false;
     }
 
     context.trace?.push({ step: 'proxy_send', timestamp: performance.now() });
@@ -124,6 +124,7 @@ export default class WebEyeTrackProxy {
         payload: { frame, context }
       }, [buffer]); // Transfer buffer
     }
+    return true;
   }
 
   // Callback for gaze results
