@@ -3,6 +3,7 @@
 import WebEyeTrack from './WebEyeTrack';
 // import type { TrackingContext } from './types';
 import FaceLandmarkerClient from '../Core/FaceLandmarkerClient';
+import type { BiometricsResult } from "./types.ts";
 
 let faceLandmarker: FaceLandmarkerClient;
 let tracker: WebEyeTrack;
