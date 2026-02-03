@@ -1,4 +1,4 @@
-import type {BiometricsResult, TrackingContext} from "./types";
+import type {BiometricsResult, TrackingContext, VideoFrameData} from "./types";
 
 interface TrackerConfig {
   maxPoints?: number;
