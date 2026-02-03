@@ -4,6 +4,8 @@ import type { RGBSample } from "@webcambiometrics/vitals";
 // export type Point = [number, number];
 export type Point = number[];
 
+export type VideoFrameData = VideoFrame | ImageData | ImageBitmap;
+
 export enum TrackingStatus {
   FAILED = 0,
   SUCCESS = 1,

@@ -99,34 +99,36 @@ export default class WebEyeTrackProxy {
     window.addEventListener('pointerdown', this.inputHandler);
   }
 
-  public async processFrame(frame: VideoFrame | ImageData, context: TrackingContext): Promise<boolean> {
+  public async processFrame(frame: VideoFrameData, context: TrackingContext): Promise<boolean> {
     if (this._disposed) return false;
 
     // Simple backpressure: if worker is busy, drop the frame
     if (this.status !== 'idle') {
-      // CRITICAL: If we drop a VideoFrame, we MUST close it, otherwise GPU memory leaks.
-      if (frame instanceof VideoFrame) {
-        frame.close();
-      }
+      // Close frame to prevent memory leaks
+      if (frame instanceof VideoFrame || frame instanceof ImageBitmap) frame.close();
       return false;
     }
 
-    this.status = 'inference'; // Sync lock: Set status to inferring immediately, stops future frames, don't wait for worker to confirm
-
+    // Sync lock: Set status to inferring immediately, stops future frames, don't wait for worker to confirm
+    this.status = 'inference';
+    // Track
     context.trace?.push({ step: 'proxy_send', timestamp: performance.now() });
-    // Send to worker
-    if (frame instanceof VideoFrame) {
-      this.worker.postMessage({
-        type: 'step',
-        payload: { frame, context }
-      }, [frame]); // Transfer ownership
-    } else if (frame instanceof ImageData) {
-      const buffer = frame.data.buffer;
-      this.worker.postMessage({
-        type: 'step',
-        payload: { frame, context }
-      }, [buffer]); // Transfer buffer
+
+    // Send to worker - prep message and transfer list to copy data over
+    let payload: any = { frame, context };
+    let transferList: Transferable[] = [];
+    if (frame instanceof VideoFrame || frame instanceof ImageBitmap) {
+      transferList.push(frame); // Transfer VideoFrame/ImageBitmap (Zero-Copy)
+    } else if (frame instanceof ImageData) { // Copy ImageData as not transferable
+      payload = { frame, context };
+      transferList.push(frame.data.buffer); // We pass the buffer to transfer the raw memory instead
     }
+
+    this.worker.postMessage({
+      type: 'step',
+      payload: payload
+    }, transferList);
+
     return true;
   }
 

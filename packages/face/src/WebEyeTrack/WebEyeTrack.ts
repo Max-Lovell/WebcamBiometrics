@@ -1,7 +1,7 @@
 import * as tf from '@tensorflow/tfjs';
 import {Matrix} from 'ml-matrix';
 
-import type {Point, WebEyeTrackResult} from "./types";
+import type {Point, VideoFrameData, WebEyeTrackResult} from "./types";
 import BlazeGaze from "./BlazeGaze";
 import {
   applyAffineMatrix,
@@ -440,25 +440,35 @@ export default class WebEyeTrack {
     // return this.smoothedFaceOrigin;
   }
 
-  prepareInput(frame: ImageData | VideoFrame, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
+  prepareInput(frame: VideoFrameData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
 
     let width: number;
     let height: number;
-    let frameImageData: ImageData;
+    let frameImageData: ImageData | ImageBitmap;
+// TODO: Should be visible, display, or coded width??
 
-    if (frame instanceof VideoFrame) {
-      width = frame.displayWidth;
-      height = frame.displayHeight;
-
-      const ctx = this.getTempContext(width, height);
-
-      ctx.drawImage(frame, 0, 0);
-      frameImageData = ctx.getImageData(0, 0, width, height);
-    } else {
-      // Already ImageData - Legacy for older Safari mostly
+    if (frame instanceof ImageData) {
+      // Legacy/Fallback path
+      frameImageData = frame;
       width = frame.width;
       height = frame.height;
-      frameImageData = frame;
+    } else {
+      // VideoFrame or ImageBitmap (Worker path)
+      if (frame instanceof VideoFrame) {
+        width = frame.displayWidth;
+        height = frame.displayHeight;
+      } else {
+        // ImageBitmap
+        width = frame.width;
+        height = frame.height;
+      }
+      // Draw to OffscreenCanvas to get pixel data
+      const ctx = this.getTempContext(width, height);
+      // Both VideoFrame and ImageBitmap are valid CanvasImageSource
+      ctx.drawImage(frame, 0, 0);
+      // This is the unavoidable CPU readback cost for using CPU-based mathUtils
+      // With 'willReadFrequently', this is somewhat optimized
+      frameImageData = ctx.getImageData(0, 0, width, height);
     }
 
     // If perspective matrix is not set, initialize it
@@ -684,7 +694,7 @@ export default class WebEyeTrack {
     }
   }
 
-  async step(frame: ImageData | VideoFrame, timestamp: number, result: FaceLandmarkerResult | null): Promise<WebEyeTrackResult> {
+  async step(frame: VideoFrameData, timestamp: number, result: FaceLandmarkerResult | null): Promise<WebEyeTrackResult> {
     const tic1 = performance.now();
     // result = null; // For testing purposes, we can set result to null to simulate no face detected
     if (!result || !result.faceLandmarks || result.faceLandmarks.length === 0) {

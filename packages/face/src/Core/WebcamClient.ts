@@ -1,5 +1,4 @@
-import type { TrackingContext } from '../WebEyeTrack/types.ts';
-export type VideoFrameData = VideoFrame | ImageData;
+import type {TrackingContext, VideoFrameData} from '../WebEyeTrack/types.ts'; // Note move these up?
 
 export default class WebcamClient {
     private videoElement: HTMLVideoElement;
@@ -9,8 +8,6 @@ export default class WebcamClient {
     private animationFrameId: number | null = null;
     private videoFrameId: number | null = null;
     private _disposed: boolean = false;
-    private cachedCanvas: HTMLCanvasElement | null = null;
-    private cachedContext: CanvasRenderingContext2D | null = null;
     private abortController: AbortController | null = null;
 
     constructor(videoElementId: string) {
@@ -143,20 +140,25 @@ export default class WebcamClient {
     }
 
     private _processFrames(): void {
-        const process = (now: number, metadata?: VideoFrameCallbackMetadata) => {
+        const process = async (now: number, metadata?: VideoFrameCallbackMetadata) => {
             if (!this.isRunning) return;
 
-            // Extract pixel data using the fallback canvas method
-            const imageData = this.convertVideoFrameToImageData(this.videoElement);
-
-            const context: TrackingContext = {
-                videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000 || 0.0001,
-                systemTime: now,
-                frameId: metadata?.presentedFrames || 0,
-                trace: [{ step: 'start_process_frames', timestamp: performance.now() }],
-            };
-
-            if (this.frameCallback) void this.frameCallback(imageData, context);
+            if (this.frameCallback) {
+                const context: TrackingContext = {
+                    videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000 || 0.0001,
+                    systemTime: now,
+                    frameId: metadata?.presentedFrames || 0,
+                    trace: [{ step: 'start_process_frames', timestamp: performance.now() }],
+                };
+                // createImageBitmap is async but much faster than getImageData as it stays on GPU often
+                    // previous approach: const imageData = this.convertVideoFrameToImageData(this.videoElement);
+                const bitmap = await createImageBitmap(this.videoElement);
+                try {
+                    await this.frameCallback(bitmap, context);
+                } finally {
+                    bitmap.close();
+                }
+            }
 
             // Re-schedule
             if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
@@ -176,34 +178,6 @@ export default class WebcamClient {
         }
     }
 
-    /**
-     * Converts video frame to ImageData using a cached canvas for performance.
-     * Canvas is created once and reused across all frames unless video dimensions change.
-     */
-    private convertVideoFrameToImageData(frame: HTMLVideoElement): ImageData {
-        const width = frame.videoWidth;
-        const height = frame.videoHeight;
-
-        // Handle invalid dimensions (video not ready)
-        if (width === 0 || height === 0) {
-            return new ImageData(1, 1); // Return empty safety dummy
-        }
-
-        // Create canvas only once or when dimensions change
-        if (!this.cachedCanvas || this.cachedCanvas.width !== width || this.cachedCanvas.height !== height) {
-            this.cachedCanvas = document.createElement('canvas');
-            this.cachedCanvas.width = width;
-            this.cachedCanvas.height = height;
-
-            // willReadFrequently hint optimizes for repeated getImageData() calls
-            this.cachedContext = this.cachedCanvas.getContext('2d', { willReadFrequently: true})!;
-        }
-
-        // Reuse existing canvas and context
-        this.cachedContext!.drawImage(frame, 0, 0);
-        return this.cachedContext!.getImageData(0, 0, width, height);
-    }
-
     pauseProcessing(): void {
         this.frameCallback = undefined;
     }
@@ -212,10 +186,6 @@ export default class WebcamClient {
         this.isRunning = false;
         this.stopWebcam();
         this.frameCallback = undefined;
-
-        // Clean up cached canvas resources
-        this.cachedCanvas = null;
-        this.cachedContext = null;
 
         this._disposed = true;
     }
