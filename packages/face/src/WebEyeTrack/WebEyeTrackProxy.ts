@@ -38,8 +38,7 @@ export default class WebEyeTrackProxy {
         case 'stepResult':
           this.status = 'idle'; // Unlock as result received
           // Handle gaze results
-          const gazeResult: BiometricsResult = mess.data.result;
-          this.onGazeResults(gazeResult);
+          this.onGazeResults(mess.data.result);
           break;
 
         case 'stepError': // New case for safety (see below)
@@ -83,7 +82,7 @@ export default class WebEyeTrackProxy {
     // Add mouse handler for re-calibration
     this.inputHandler = (e: PointerEvent) => {
       // Prevent default browser zooming/scrolling behavior if necessary
-      if (e.isPrimary === false) return; // Optional: Ignore multi-touch secondary fingers
+      if (!e.isPrimary) return; // Optional: Ignore multi-touch secondary fingers
       // Easier return on click if currently calibrating
       if (this.status === 'calib') {
         console.warn("Click ignored - Calibration in progress");
