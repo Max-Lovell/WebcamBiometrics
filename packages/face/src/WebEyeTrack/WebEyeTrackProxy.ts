@@ -83,14 +83,7 @@ export default class WebEyeTrackProxy {
     this.inputHandler = (e: PointerEvent) => {
       // Prevent default browser zooming/scrolling behavior if necessary
       if (!e.isPrimary) return; // Optional: Ignore multi-touch secondary fingers
-      // Easier return on click if currently calibrating
-      if (this.status === 'calib') {
-        console.warn("Click ignored - Calibration in progress");
-        return;
-      }
-
-      // this.status = 'calib' // consider adding this lock to block frames from processing?
-
+      
       const viewWidth = document.documentElement.clientWidth || window.innerWidth;
       const viewHeight = document.documentElement.clientHeight || window.innerHeight;
 
