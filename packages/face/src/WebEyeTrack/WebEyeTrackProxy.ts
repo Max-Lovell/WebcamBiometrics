@@ -42,8 +42,9 @@ export default class WebEyeTrackProxy {
           this.onGazeResults(gazeResult);
           break;
 
-        case 'statusUpdate':
-          this.status = mess.data.status;
+        case 'stepError': // New case for safety (see below)
+          console.warn("Worker error during step:", mess.data.error);
+          this.status = 'idle'; // Ensure we unlock even on failure
           break;
 
         case 'adaptComplete':
