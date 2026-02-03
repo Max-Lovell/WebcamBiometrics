@@ -125,23 +125,25 @@ export default class WebEyeTrack {
   }
 
   private getTempContext(width: number, height: number) {
-    if (!this.tempCanvas || !this.tempCtx) {
+    if (!this.tempCanvas) {
       if (typeof OffscreenCanvas !== 'undefined') {
         this.tempCanvas = new OffscreenCanvas(width, height);
-        this.tempCtx = this.tempCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
       } else {
         // Fallback if worker doesn't support OffscreenCanvas (rare)
         this.tempCanvas = document.createElement('canvas');
-        this.tempCanvas.width = width;
-        this.tempCanvas.height = height;
-        this.tempCtx = this.tempCanvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
       }
     }
 
-    // Ensure dimensions match
+    // Ensure dimensions match - resize if changed
     if (this.tempCanvas.width !== width || this.tempCanvas.height !== height) {
       this.tempCanvas.width = width;
       this.tempCanvas.height = height;
+      // Invalidate context if we resized (safest approach)
+      this.tempCtx = null;
+    }
+
+    if(!this.tempCtx){
+      this.tempCtx = this.tempCanvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
     }
 
     return this.tempCtx;
@@ -158,9 +160,7 @@ export default class WebEyeTrack {
    * This compiles WebGL shaders and optimizes computation graphs before first real usage.
    */
   async warmup(): Promise<void> {
-    console.log('🔥 Starting TensorFlow.js warmup...');
     const warmupStart = performance.now();
-
     // Warmup iterations match total buffer capacity to exercise all code paths
     const numWarmupIterations = this.maxCalibPoints + this.maxClickPoints;
 
@@ -217,9 +217,7 @@ export default class WebEyeTrack {
       console.log(`  Iteration ${iteration}/${numWarmupIterations}: ${iterationTime.toFixed(2)}ms`);
     }
 
-    const warmupTime = performance.now() - warmupStart;
-    console.log(`✅ TensorFlow.js warmup complete in ${warmupTime.toFixed(2)}ms`);
-    console.log(`   GPU shaders compiled, computation graphs optimized`);
+    console.log(`TensorFlow.js warmup complete in ${(performance.now() - warmupStart).toFixed(2)}ms`);
   }
 
   /**
@@ -228,29 +226,18 @@ export default class WebEyeTrack {
    * Properly disposes all calibration tensors to prevent memory leaks.
    */
   clearCalibrationBuffer() {
-    console.log('🔄 Clearing calibration buffer for re-calibration');
-
+    console.log('Clearing calibration buffer');
     // Dispose all calibration tensors
-    this.calibData.calibSupportX.forEach(item => {
-      tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
-    });
-
-    this.calibData.calibSupportY.forEach(tensor => {
-      tf.dispose(tensor);
-    });
-
-    // Clear calibration arrays
+    this.calibData.calibSupportX.forEach(item => tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]));
+    this.calibData.calibSupportY.forEach(tensor => tf.dispose(tensor));
     this.calibData.calibSupportX = [];
     this.calibData.calibSupportY = [];
     this.calibData.calibTimestamps = [];
-
     // Reset affine matrix (will be recomputed with new calibration)
     if (this.affineMatrix) {
       tf.dispose(this.affineMatrix);
       this.affineMatrix = null;
     }
-
-    console.log('✅ Calibration buffer cleared');
   }
 
   /**
@@ -263,23 +250,12 @@ export default class WebEyeTrack {
    * tracker.clearClickstreamPoints();
    */
   clearClickstreamPoints() {
-    console.log('🔄 Clearing clickstream buffer');
-
-    // Dispose all clickstream tensors
-    this.calibData.clickSupportX.forEach(item => {
-      tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]);
-    });
-
-    this.calibData.clickSupportY.forEach(tensor => {
-      tf.dispose(tensor);
-    });
-
-    // Clear clickstream arrays
+    console.log('Clearing clickstream buffer');
+    this.calibData.clickSupportX.forEach(item => tf.dispose([item.eyePatches, item.headVectors, item.faceOrigins3D]));
+    this.calibData.clickSupportY.forEach(tensor => tf.dispose(tensor));
     this.calibData.clickSupportX = [];
     this.calibData.clickSupportY = [];
     this.calibData.clickTimestamps = [];
-
-    console.log('✅ Clickstream buffer cleared');
   }
 
   /**
@@ -293,10 +269,8 @@ export default class WebEyeTrack {
    * tracker.adapt(...); // Start fresh calibration
    */
   resetAllBuffers() {
-    console.log('🔄 Resetting all buffers for re-calibration');
     this.clearCalibrationBuffer();
     this.clearClickstreamPoints();
-    console.log('✅ All buffers reset - ready for fresh calibration');
   }
 
   /**
@@ -362,10 +336,10 @@ export default class WebEyeTrack {
   handleClick(x: number, y: number) {
     console.log(`🖱️ Global click at: (${x}, ${y}), ${this.loaded}`);
 
+    // Remove time/space close clicks - but only for most recent actually used click!
     // Debounce clicks based on the latest click timestamp
     if (this.latestMouseClick && (Date.now() - this.latestMouseClick.timestamp < 1000)) {
       console.log("🖱️ Click ignored due to debounce");
-      this.latestMouseClick = { x, y, timestamp: Date.now() };
       return;
     }
 
@@ -373,9 +347,8 @@ export default class WebEyeTrack {
     if (this.latestMouseClick &&
         Math.abs(x - this.latestMouseClick.x) < 0.05 &&
         Math.abs(y - this.latestMouseClick.y) < 0.05) {
-      console.log("🖱️ Click ignored due to proximity to last click");
-      this.latestMouseClick = { x, y, timestamp: Date.now() };
-      return;
+        console.log("🖱️ Click ignored due to proximity to last click");
+        return;
     }
 
     this.latestMouseClick = { x, y, timestamp: Date.now() };
@@ -384,9 +357,9 @@ export default class WebEyeTrack {
       // Adapt the model based on the click position
       // Use Python default parameters (main.py:183-185) for click calibration
       this.adapt(
-        [this.latestGazeResult?.eyePatch as ImageData],
-        [this.latestGazeResult?.headVector as number[]],
-        [this.latestGazeResult?.faceOrigin3D as number[]],
+        [this.latestGazeResult.eyePatch],
+        [this.latestGazeResult.headVector],
+        [this.latestGazeResult.faceOrigin3D],
         [[x, y]],
           1,      // stepsInner: matches Python main.py:183
         1e-5,    // innerLR: matches Python main.py:184
@@ -417,27 +390,6 @@ export default class WebEyeTrack {
     );
 
     return computeFaceOrigin3D(metricFace);
-    // // Get distance
-    // const dist = Math.hypot(
-    //     rawOrigin[0] - this.smoothedFaceOrigin[0],
-    //     rawOrigin[1] - this.smoothedFaceOrigin[1],
-    //     rawOrigin[2] - this.smoothedFaceOrigin[2]
-    // );
-    //
-    // // Apply Low-Pass Filter to smooth out small z-changes
-    // if (dist > 10) {
-    //   // User moved head quickly, reset filter
-    //   this.smoothedFaceOrigin = rawOrigin;
-    // } else {
-    //   // User is sitting still, smooth the jitter
-    //   this.smoothedFaceOrigin = [
-    //     this.smoothedFaceOrigin[0] * (1 - this.originAlpha) + rawOrigin[0] * this.originAlpha,
-    //     this.smoothedFaceOrigin[1] * (1 - this.originAlpha) + rawOrigin[1] * this.originAlpha,
-    //     this.smoothedFaceOrigin[2] * (1 - this.originAlpha) + rawOrigin[2] * this.originAlpha,
-    //   ];
-    // }
-
-    // return this.smoothedFaceOrigin;
   }
 
   prepareInput(frame: VideoFrameData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
@@ -481,6 +433,7 @@ export default class WebEyeTrack {
     // If intrinsics matrix is not set, initialize it
     if (!this.intrinsicsMatrixSet) {
       this.intrinsicsMatrix = createIntrinsicsMatrix(width, height);
+      this.intrinsicsMatrixSet = true;
     }
 
     // Convert the normalized landmarks to non-normalized coordinates
@@ -533,9 +486,7 @@ export default class WebEyeTrack {
 
     // Prune old clickstream data (calibration buffer is never pruned)
     this.pruneCalibData();
-
-    // Optimizer must persist across training iterations, so created outside tf.tidy()
-    // Must be explicitly disposed to prevent memory leak of internal variables
+    // TODO: consider persistent optimiser, but haas downsides...
     const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
 
     try {
@@ -561,9 +512,7 @@ export default class WebEyeTrack {
       // TODO: implement Auto-Reset on Movement for high-confidence calibration points
       const TOTAL_LIMIT = this.maxCalibPoints + this.maxClickPoints;
 
-      while (
-          (this.calibData.calibSupportX.length + this.calibData.clickSupportX.length) > TOTAL_LIMIT
-          ) {
+      while ((this.calibData.calibSupportX.length + this.calibData.clickSupportX.length) > TOTAL_LIMIT) {
         // Eviction Strategy: Prevent "Elastic Banding"
         // If we are over the limit, we prefer to evict old CALIBRATION data.
         // This ensures that new correction clicks (which reflect your current posture)
@@ -626,24 +575,14 @@ export default class WebEyeTrack {
       // Requires at least 4 points (affine has 6 DOF: 2 scale, 2 rotation/shear, 2 translation)
       if (tfEyePatches.shape[0] > 3) {
         const supportPreds = tf.tidy(() => {
-          return this.blazeGaze.predict(
-            tfEyePatches,
-            tfHeadVectors,
-            tfFaceOrigins3D
-          );
+          return this.blazeGaze.predict(tfEyePatches, tfHeadVectors, tfFaceOrigins3D);
         });
-
         const supportPredsNumber = supportPreds.arraySync() as number[][];
         const supportYNumber = tfSupportY.arraySync() as number[][];
-
         // Dispose the prediction tensor after extracting values
         tf.dispose(supportPreds);
         try { // TODO: Already added this try catch.
-          const affineMatrixML = computeAffineMatrixML(
-            supportPredsNumber,
-            supportYNumber
-          );
-
+          const affineMatrixML = computeAffineMatrixML(supportPredsNumber, supportYNumber);
           // Dispose old affine matrix before creating new one
           if (this.affineMatrix) {
             tf.dispose(this.affineMatrix);
@@ -664,17 +603,15 @@ export default class WebEyeTrack {
             const loss = tf.losses.meanSquaredError(tfSupportY, predsTransformed);
             return loss.asScalar();
           });
-
           // variableGrads returns NamedTensorMap where values are gradients of Variables
           // Type assertion is safe because variableGrads computes gradients w.r.t. Variables
           opt.applyGradients(grads as Record<string, tf.Variable>);
-
           // Explicitly dispose gradients (defensive, tf.tidy should handle this)
           Object.values(grads).forEach(g => g.dispose());
 
           // Synchronous logging to avoid race condition with tf.tidy() cleanup
-          const lossValue = loss.dataSync()[0];
-          console.log(`Loss = ${lossValue.toFixed(4)}`);
+          // const lossValue = loss.dataSync()[0];
+          // console.log(`Loss = ${lossValue.toFixed(4)}`);
           loss.dispose();
         }
       });
@@ -725,7 +662,6 @@ export default class WebEyeTrack {
     if ( leftEAR < 0.2 || rightEAR < 0.2) {
       gaze_state = 'closed';
     }
-    // gaze_state = 'closed';
 
     // If 'closed' return (0, 0)
     // console.log(result)
@@ -756,8 +692,8 @@ export default class WebEyeTrack {
       const headVectorTensor = tf.tensor2d(headVector, [1, 3]);
       const faceOriginTensor = tf.tensor2d(faceOrigin3D, [1, 3]);
       let outputTensor = this.blazeGaze.predict(normalizedInputTensor, headVectorTensor, faceOriginTensor);
+      // Defensive dispose - but probably handled by tidy()
       tf.dispose([inputTensor, normalizedInputTensor, headVectorTensor, faceOriginTensor]);
-      const tic4 = performance.now();
 
       // If affine transformation is available, apply it
       if (this.affineMatrix) {
@@ -768,7 +704,7 @@ export default class WebEyeTrack {
       if (!outputTensor || outputTensor.shape.length === 0) {
         throw new Error("BlazeGaze model did not return valid output");
       }
-      return [outputTensor, tic4];
+      return [outputTensor, performance.now()];
     });
 
     const normPog = predNormPog.arraySync() as number[][];
@@ -776,20 +712,12 @@ export default class WebEyeTrack {
 
     // Apply Kalman filter to smooth the gaze point
     const kalmanOutput = this.kalmanFilter.step(normPog[0]);
-
     // Clip the output to the range of [-0.5, 0.5]
     kalmanOutput[0] = Math.max(-0.5, Math.min(0.5, kalmanOutput[0]));
     kalmanOutput[1] = Math.max(-0.5, Math.min(0.5, kalmanOutput[1]));
 
-    const tic5 = performance.now();
-    // Log the timings
-    const durations = {
-      blazeGaze: tic4 - tic3,
-      kalmanFilter: tic5 - tic4,
-      total: tic5 - tic1
-    };
-
     // Return GazeResult
+    const tic5 = performance.now();
     let gaze_result: WebEyeTrackResult = {
       eyePatch: eyePatch,
       headVector: headVector,
@@ -797,7 +725,11 @@ export default class WebEyeTrack {
       metric_transform: {rows: 3, columns: 3, data: [1, 0, 0, 1, 0, 0, 1, 0, 0]}, // Placeholder, should be computed
       gazeState: gaze_state,
       normPog: kalmanOutput,
-      durations: durations,
+      durations: {
+        blazeGaze: tic4 - tic3,
+        kalmanFilter: tic5 - tic4,
+        total: tic5 - tic1
+      },
       timestamp: timestamp
     };
 
@@ -817,6 +749,8 @@ export default class WebEyeTrack {
     if (this._disposed) {
       return;
     }
+    this.clearCalibrationBuffer();
+    this.clearClickstreamPoints();
 
     // Dispose all calibration buffer tensors
     this.calibData.calibSupportX.forEach(item => {
@@ -851,7 +785,7 @@ export default class WebEyeTrack {
     }
 
     // Dispose child components if they have dispose methods
-    if ('dispose' in this.blazeGaze && typeof this.blazeGaze.dispose === 'function') {
+    if (this.blazeGaze && typeof this.blazeGaze.dispose === 'function') {
       this.blazeGaze.dispose();
     }
 
