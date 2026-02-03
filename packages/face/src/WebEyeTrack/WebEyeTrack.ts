@@ -628,17 +628,21 @@ export default class WebEyeTrack {
 
         // Dispose the prediction tensor after extracting values
         tf.dispose(supportPreds);
+        try { // TODO: Already added this try catch.
+          const affineMatrixML = computeAffineMatrixML(
+            supportPredsNumber,
+            supportYNumber
+          );
 
-        const affineMatrixML = computeAffineMatrixML(
-          supportPredsNumber,
-          supportYNumber
-        );
-
-        // Dispose old affine matrix before creating new one
-        if (this.affineMatrix) {
-          tf.dispose(this.affineMatrix);
+          // Dispose old affine matrix before creating new one
+          if (this.affineMatrix) {
+            tf.dispose(this.affineMatrix);
+          }
+          this.affineMatrix = tf.tensor2d(affineMatrixML, [2, 3], 'float32');
+        } catch (e) {
+          console.warn("Skipping affine update: Calibration points are likely too similar (rank deficient).", e);
+          // swallow the error here so the tracker keeps running with the previous valid matrix.
         }
-        this.affineMatrix = tf.tensor2d(affineMatrixML, [2, 3], 'float32');
       }
 
       // === MAML-STYLE ADAPTATION TRAINING ===
