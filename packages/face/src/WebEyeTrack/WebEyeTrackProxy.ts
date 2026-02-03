@@ -17,7 +17,7 @@ export default class WebEyeTrackProxy {
   private adaptResolve: (() => void) | null = null;
   private adaptReject: ((error: Error) => void) | null = null;
 
-  public status: 'idle' | 'inference' | 'calib' = 'idle';
+  public status: 'idle' | 'inference' | 'calib' = 'idle'; // initialise to idle
 
   constructor(config: TrackerConfig = {}) {
 
@@ -36,6 +36,7 @@ export default class WebEyeTrackProxy {
           break;
 
         case 'stepResult':
+          this.status = 'idle'; // Unlock as result received
           // Handle gaze results
           const gazeResult: BiometricsResult = mess.data.result;
           this.onGazeResults(gazeResult);
@@ -82,6 +83,13 @@ export default class WebEyeTrackProxy {
     this.inputHandler = (e: PointerEvent) => {
       // Prevent default browser zooming/scrolling behavior if necessary
       if (e.isPrimary === false) return; // Optional: Ignore multi-touch secondary fingers
+      // Easier return on click if currently calibrating
+      if (this.status === 'calib') {
+        console.warn("Click ignored - Calibration in progress");
+        return;
+      }
+
+      // this.status = 'calib' // consider adding this lock to block frames from processing?
 
       const viewWidth = document.documentElement.clientWidth || window.innerWidth;
       const viewHeight = document.documentElement.clientHeight || window.innerHeight;
@@ -109,6 +117,8 @@ export default class WebEyeTrackProxy {
       }
       return false;
     }
+
+    this.status = 'inference'; // Sync lock: Set status to inferring immediately, stops future frames, don't wait for worker to confirm
 
     context.trace?.push({ step: 'proxy_send', timestamp: performance.now() });
     // Send to worker

@@ -32,69 +32,63 @@ self.onmessage = async (e: MessageEvent) => {
       break;
 
     case 'step':
-      if (status === 'idle') {
-
-        status = 'inference';
-        self.postMessage({ type: 'statusUpdate', status: status});
-        const { frame, context } = payload;
-        context.trace.push({ step: 'worker_start', timestamp: performance.now() });
-        try {
-          // TODO: move from "Stop-and-Wait" protocol to run BlazeGaze in parallel if have previous face mesh waiting (worth it?)
-            // TODO: Make next frame start processing immediately using single-slot buffer where next frame is overridden with most recently received one whilst processing
-          context.trace.push({ step: 'facelandmarker_start', timestamp: performance.now() });
-          const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
-          context.trace.push({ step: 'facelandmarker_end', timestamp: performance.now() });
-          if(!faceResult) return
-          context.trace.push({ step: 'webeyetrack_start', timestamp: performance.now() });
-          const gazeResult = await tracker.step(frame, context.videoTime, faceResult);
-          context.trace.push({ step: 'webeyetrack_end', timestamp: performance.now() });
-
-          // console.log('gazeResult', gazeResult);
-          // add rPPG
-
-          // Attach context to result so main thread can log
-          context.trace.push({ step: 'worker_end', timestamp: performance.now() });
-          const finalResult: BiometricsResult = {
-            faceLandmarker: faceResult,
-            webEyeTrack: gazeResult,
-            // Attach context so main thread can log it
-            context: context,
-            // Default to 0s if no face detected or buffer not full
-          };
-          self.postMessage({ type: 'stepResult', result: finalResult });
-        } catch (err) {
-          console.error(err);
-        } finally {
-          // Must manage memory of video frames
-          if (frame && typeof frame.close === 'function') {
-            frame.close();
-          }
-        }
-        status = 'idle';
-        self.postMessage({ type: 'statusUpdate', status: status});
-      } else {
-        // Race edge case handling if the worker receives frame while busy
+      if (status !== 'idle') {
         if (payload.frame && typeof payload.frame.close === 'function') {
           payload.frame.close();
         }
+        return;
       }
+      status = 'inference';
+      const { frame, context } = payload;
+      context.trace.push({ step: 'worker_start', timestamp: performance.now() });
+      try {
+        // TODO: move from "Stop-and-Wait" protocol to run BlazeGaze in parallel if have previous face mesh waiting (worth it?)
+          // TODO: Make next frame start processing immediately using single-slot buffer where next frame is overridden with most recently received one whilst processing
+        context.trace.push({ step: 'facelandmarker_start', timestamp: performance.now() });
+        const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
+        context.trace.push({ step: 'facelandmarker_end', timestamp: performance.now() });
+        if(!faceResult) return
+        context.trace.push({ step: 'webeyetrack_start', timestamp: performance.now() });
+        const gazeResult = await tracker.step(frame, context.videoTime, faceResult);
+        context.trace.push({ step: 'webeyetrack_end', timestamp: performance.now() });
+
+        // Attach context to result so main thread can log
+        context.trace.push({ step: 'worker_end', timestamp: performance.now() });
+        const finalResult: BiometricsResult = {
+          faceLandmarker: faceResult,
+          webEyeTrack: gazeResult,
+          // Attach context so main thread can log it
+          context: context,
+          // Default to 0s if no face detected or buffer not full
+        };
+        self.postMessage({ type: 'stepResult', result: finalResult });
+      } catch (err) {
+        console.error(err);
+        self.postMessage({ type: 'stepError', error: String(err) });
+      } finally {
+        // Must manage memory of video frames
+        if (frame && typeof frame.close === 'function') {
+          frame.close();
+        }
+      }
+      status = 'idle';
       break;
 
     case 'click':
       // Handle click event for re-calibration
-      status = 'calib';
-      self.postMessage({ type: 'statusUpdate', status: status});
-
-      tracker.handleClick(payload.x, payload.y);
-
-      status = 'idle';
-      self.postMessage({ type: 'statusUpdate', status: status});
+      // status = 'calib'; // TODO: consider blocking processing for calibration again in future?
+      try {
+        tracker.handleClick(payload.x, payload.y);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        // status = 'idle'; // Reset to idle when handled.
+      }
       break;
 
     case 'adapt':
       // Handle manual calibration MAML adaptation
       status = 'calib';
-      self.postMessage({ type: 'statusUpdate', status: status});
 
       try {
         tracker.adapt(
@@ -113,7 +107,6 @@ self.onmessage = async (e: MessageEvent) => {
       }
 
       status = 'idle';
-      self.postMessage({ type: 'statusUpdate', status: status});
       break;
 
     case 'clearCalibration':
