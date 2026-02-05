@@ -1,16 +1,25 @@
 import type {TrackingContext, VideoFrameData} from '../WebEyeTrack/types.ts'; // Note move these up?
 
-export default class WebcamClient {
-    public onStreamEnded?: () => void;
+export type WebcamStatus = 'active' | 'inactive' | 'waiting' | 'error';
 
+export default class WebcamClient {
     private videoElement: HTMLVideoElement;
     private stream?: MediaStream;
     private frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>;
-    private isRunning: boolean = false; // Flag to kill the loop
+
+    // State
+    private isRunning: boolean = false;  // Flag to kill the loop
+    private shouldBeRunning: boolean = false;
+
+    // Cleanup
     private animationFrameId: number | null = null;
     private videoFrameId: number | null = null;
     private _disposed: boolean = false;
     private abortController: AbortController | null = null;
+    private deviceChangeListener: () => void;
+
+    // External
+    public onStatusChange?: (status: WebcamStatus, msg?: string) => void;
 
     constructor(videoElementId: string) {
         const videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -18,16 +27,29 @@ export default class WebcamClient {
             throw new Error(`Video element with id '${videoElementId}' not found`);
         }
         this.videoElement = videoElement;
+
+        // note `this` is instance of class WebcamClient, but not inside function passed to event listener
+            // .bind allows e.g. this.shouldBeRunning to be referenced in event handler.
+            // assigned to variable this.deviceChangeListener to be removed later
+        this.deviceChangeListener = this.handleDeviceChange.bind(this);
+
+        navigator.mediaDevices.addEventListener('devicechange', this.deviceChangeListener);
     }
 
     async startWebcam(frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>): Promise<void> {
-        // Guard against double run of stream
-        if (this.isRunning || this.stream) {
-            console.warn("Webcam is already running or starting.");
-            return;
-        }
+        this.shouldBeRunning = true;
+        if (frameCallback) this.frameCallback = frameCallback;
+
+        await this.attemptStreamStart();
+    }
+
+    private async attemptStreamStart(): Promise<void> {
+        if (!this.shouldBeRunning || this.isRunning) return;
 
         try {
+            // Guard: If we already have a stream, don't get another
+            if (this.stream) return;
+
             const constraints: MediaStreamConstraints = {
                 video: { // Note the higher constraints are good for extracting vitals later, but slower for eyetracking
                     // width: { ideal: 1920 },
@@ -41,75 +63,105 @@ export default class WebcamClient {
                 audio: false
             };
 
-            // Request webcam access
+            this.notifyStatus('active', "Starting camera...");
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-            this.videoElement.srcObject = this.stream;
-            this.isRunning = true;
 
-            // Disconnect handler
+            // Handle stream death (e.g. unplug/lid close)
             const track = this.stream.getVideoTracks()[0];
             track.onended = () => {
-                console.warn("Camera disconnected (Lid closed or device removed)");
-                this.stopWebcam();
-                if (this.onStreamEnded) this.onStreamEnded();
+                console.warn("Camera stream ended unexpectedly.");
+                this.handleStreamLoss();
             };
 
-            // Set the callback if provided
-            if (frameCallback) {
-                this.frameCallback = frameCallback;
-            }
+            this.videoElement.srcObject = this.stream;
 
-            // Start video playback - Promise guarantees video has height and width when it starts
+            // Wait for video to be ready
             await new Promise<void>((resolve) => {
                 if (this.videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) return resolve();
                 this.videoElement.onloadedmetadata = () => resolve();
             });
-            this.videoElement.play().catch(e => console.warn("Autoplay blocked:", e));
 
+            await this.videoElement.play();
+            this.isRunning = true;
+            this.notifyStatus('active', "Tracking");
+
+            // Start Processing Loop
             if ('MediaStreamTrackProcessor' in window && 'VideoFrame' in window) {
                 void this._startStreamProcessor();
             } else {
                 this._processFrames();
             }
-        } catch (e) {
-            // Reset state on failure so the user can try again
-            this.isRunning = false;
-            this.stream = undefined;
-            // Handle errors
-            if (e instanceof DOMException && (e.name === 'NotFoundError' || e.name === 'NotReadableError')) {
-                console.warn("Camera not found. It might be disconnected or the laptop lid is closed.");
-            } else {
-                console.error("Error accessing the webcam:", e);
+
+        } catch (error) {
+            this.stream = undefined; // Ensure clean state
+
+            // Handle "Camera Not Found"
+            if (error instanceof DOMException && (error.name === "NotFoundError" || error.name === "NotReadableError")) {
+                console.warn("Camera not found. Entering waiting mode.");
+                this.notifyStatus('waiting', "Camera disconnected. Waiting for device...");
+            } else { // Consider other handlers
+                console.error("Critical webcam error:", error);
+                this.notifyStatus('error', `Error: ${error}`);
+                this.shouldBeRunning = false; // Give up on critical errors
+                throw error;
             }
-            throw e; // Re-throw so the UI knows it failed
+        }
+    }
+
+    private handleStreamLoss() {
+        this.stopProcessingLoop(); // Kill the loop/worker
+        this.stream = undefined;   // Clear the stream object
+        this.notifyStatus('waiting', "Camera disconnected. Waiting for device...");
+        // Don't set shouldBeRunning = false so will try reconnect
+    }
+
+    private handleDeviceChange() {
+        // Check if the camera should be running but isn't and restart
+        if (this.shouldBeRunning && !this.isRunning) {
+            console.log("Device change detected. Attempting recovery...");
+            // Add small delay for drivers to load
+            setTimeout(() => this.attemptStreamStart(), 1000);
         }
     }
 
     stopWebcam(): void {
-        this.isRunning = false; // Stop the rvfc/raf loop
+        // Note this keeps instance alive but places it inactive to be potentially resumed. Use dispose() to kill and clear webcam.
+        this.shouldBeRunning = false;
+        this.notifyStatus('inactive');
+        this.stopProcessingLoop();
 
+        // Fully kill stream
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => {
+                track.onended = null; // Clear handler to avoid loop
+                track.stop();
+            });
+            this.stream = undefined;
+        }
+
+        if (this.videoElement) {
+            this.videoElement.srcObject = null;
+        }
+    }
+
+    private stopProcessingLoop() {
+        this.isRunning = false;
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
         }
-
-        // Cancel pending frame
         if (this.animationFrameId !== null) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
-
         if (this.videoFrameId !== null) {
             this.videoElement.cancelVideoFrameCallback(this.videoFrameId);
             this.videoFrameId = null;
         }
+    }
 
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
-            this.stream = undefined;
-        }
-
-        this.videoElement.srcObject = null;
+    private notifyStatus(status: WebcamStatus, msg?: string) {
+        if (this.onStatusChange) this.onStatusChange(status, msg);
     }
 
     private async _startStreamProcessor() {
@@ -198,10 +250,17 @@ export default class WebcamClient {
     }
 
     dispose(): void {
-        this.isRunning = false;
-        this.stopWebcam();
-        this.frameCallback = undefined;
+        if (this._disposed) return;
 
+        this.stopWebcam(); // Stop logic and streams
+        // Unbind the global event listener - consider this.deviceChangeListener = undefined;
+        navigator.mediaDevices.removeEventListener('devicechange', this.deviceChangeListener);
+
+        // Break reference to external UI components
+        this.frameCallback = undefined;
+        this.onStatusChange = undefined;
+
+        // consider this.videoElement = null; with ts-ignore to release the DOM element reference for GC
         this._disposed = true;
     }
 
