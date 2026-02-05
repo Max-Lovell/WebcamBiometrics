@@ -5,7 +5,7 @@ export type WebcamStatus = 'active' | 'inactive' | 'waiting' | 'error';
 export default class WebcamClient {
     private videoElement: HTMLVideoElement;
     private stream?: MediaStream;
-    private frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>;
+    private frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>; // holds function to run on captured frames
 
     // State
     private isRunning: boolean = false;  // Flag to kill the loop
@@ -51,13 +51,14 @@ export default class WebcamClient {
             if (this.stream) return;
 
             const constraints: MediaStreamConstraints = {
-                video: { // Note the higher constraints are good for extracting vitals later, but slower for eyetracking
                     // width: { ideal: 1920 },
                     // height: { ideal: 1080 },
                     // frameRate: { ideal: 60 },
                     width: { ideal: 1920 },
                     height: { ideal: 1080 },
                     frameRate: { ideal: 60 },
+                // Note the higher constraints are good for extracting vitals later, but slower for eyetracking
+                video: {
                     facingMode: "user"
                 },
                 audio: false
@@ -133,6 +134,7 @@ export default class WebcamClient {
         // Fully kill stream
         if (this.stream) {
             this.stream.getTracks().forEach(track => {
+                // Note must unbind first so onended doesn't fire after stop() and try restart
                 track.onended = null; // Clear handler to avoid loop
                 track.stop();
             });
@@ -183,24 +185,32 @@ export default class WebcamClient {
                 if (result.done) break;
 
                 const frame = result.value as VideoFrame;
+                try {
+                    if (this.frameCallback) {
+                        const context: TrackingContext = {
+                            videoTime: frame.timestamp / 1000, // micro to milli
+                            systemTime: performance.now(),
+                            frameId: 0, // Not available in this API
+                            trace: [{ step: 'start_webcam', timestamp: performance.now() }],
+                        };
 
-                if (this.frameCallback) {
-                    const context: TrackingContext = {
-                        videoTime: frame.timestamp / 1000, // micro to milli
-                        systemTime: performance.now(),
-                        frameId: 0, // Not available in this API
-                        trace: [{ step: 'start_webcam', timestamp: performance.now() }],
-                    };
-
-                    // Await the callback so we don't close the frame before the user is done with it.
-                    await this.frameCallback(frame, context);
+                        // Await the callback so we don't close the frame before the user is done with it.
+                        await this.frameCallback(frame, context);
+                    }
+                } catch (err) {
+                    console.warn("Error in frame callback:", err);
+                    this.notifyStatus('error', 'Frame callback error')
+                    // TODO: consider tracking consecutiveErrors and then stopWebcam() & break loop
+                } finally {
+                    // Close frame even if callback throws error to prevent GPU memory leaks
+                    frame.close();
                 }
-
-                // Release GPU memory
-                frame.close();
             }
         } catch (e) {
-            if (!signal.aborted) console.error("Stream processor error:", e);
+            if (!signal.aborted) {
+                console.error("Stream processor error:", e);
+                this.notifyStatus('error', "Camera stream failed");
+            }
         } finally {
             reader.releaseLock();
         }
@@ -212,6 +222,7 @@ export default class WebcamClient {
 
             if (this.frameCallback) {
                 const context: TrackingContext = {
+                    // Note consider returning 0 if 0 and handling || .001 somewhere downstream...
                     videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000 || 0.0001,
                     systemTime: now,
                     frameId: metadata?.presentedFrames || 0,
