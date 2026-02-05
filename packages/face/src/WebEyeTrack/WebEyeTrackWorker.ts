@@ -52,7 +52,9 @@ self.onmessage = async (e: MessageEvent) => {
         context.trace.push({ step: 'facelandmarker_start', timestamp: performance.now() });
         const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
         context.trace.push({ step: 'facelandmarker_end', timestamp: performance.now() });
-        if(!faceResult) return
+        const isFaceDetected = faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0;
+
+        // TODO: should really handle no face detected here in Worker and not WebEyeTrack tracker...
         context.trace.push({ step: 'webeyetrack_start', timestamp: performance.now() });
         const gazeResult = await tracker.step(frame, context.videoTime, faceResult);
         context.trace.push({ step: 'webeyetrack_end', timestamp: performance.now() });
@@ -60,26 +62,37 @@ self.onmessage = async (e: MessageEvent) => {
         // Attach context to result so main thread can log
         context.trace.push({ step: 'worker_end', timestamp: performance.now() });
 
-        const facialTransformationMatrix = faceResult.facialTransformationMatrixes[0].data
+        let summary;
 
-        const summary = {
-          faceDetected: faceResult.faceLandmarks.length > 0,
-          // TODO distance: a weighted split works best for now but figure out what is going wrong in other models
-          //  Note: mediapipe = center of head, WET = Nose bridge. MP=stable but heavy filtering, WET=unstable but jittery
-          //  MP uses 1.2cm iris, wet uses 15cm eye distance (might be slightly off just for me?)
-          //  Solution: bring MP estimate forward and up, stabilise and perform better estimate for WET faceWidth.
-          distance: ((facialTransformationMatrix[14] * -1) * .20) + (gazeResult.faceOrigin3D[2] * .80),
-          headRotation: [facialTransformationMatrix[2], facialTransformationMatrix[6], facialTransformationMatrix[10]],
-          headPosition: [facialTransformationMatrix[12], facialTransformationMatrix[13]*-1, facialTransformationMatrix[14]*-1],
+        if (isFaceDetected) {
+          const facialTransformationMatrix = faceResult.facialTransformationMatrixes[0].data;
+          summary = {
+            faceDetected: true,
+            // TODO distance: a weighted split works best for now but figure out what is going wrong in other models
+            //  Note: mediapipe = center of head, WET = Nose bridge. MP=stable but heavy filtering, WET=unstable but jittery
+            //  MP uses 1.2cm iris, wet uses 15cm eye distance (might be slightly off just for me?)
+            //  Solution: bring MP estimate forward and up, stabilise and perform better estimate for WET faceWidth.
+            distance: ((facialTransformationMatrix[14] * -1) * .25) + (gazeResult.faceOrigin3D[2] * .75),
+            headRotation: [facialTransformationMatrix[2], facialTransformationMatrix[6], facialTransformationMatrix[10]],
+            headPosition: [facialTransformationMatrix[12], facialTransformationMatrix[13]*-1, facialTransformationMatrix[14]*-1],
+          };
+        } else {
+          // Fallback summary so the UI doesn't crash
+          summary = {
+            faceDetected: false,
+            distance: 0, // Or maintain the last known distance if you cache it
+            headRotation: [0, 0, 0],
+            headPosition: [0, 0, 0],
+          };
         }
+
         const finalResult: BiometricsResult = {
           faceLandmarker: faceResult,
           webEyeTrack: gazeResult,
-          // Attach context so main thread can log it
           context: context,
-          // Default to 0s if no face detected or buffer not full
           summary: summary
         };
+
         self.postMessage({ type: 'stepResult', result: finalResult });
       } catch (err) {
         console.error(err);

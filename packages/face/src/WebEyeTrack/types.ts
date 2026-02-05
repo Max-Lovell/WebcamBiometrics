@@ -52,7 +52,7 @@ export interface summaryResult {
 }
 
 export interface BiometricsResult {
-  faceLandmarker: FaceLandmarkerResult;
+  faceLandmarker: FaceLandmarkerResult | null; // Note should this be nullable?
   webEyeTrack: WebEyeTrackResult;
   // rPPG: RPPGResult;
   context: TrackingContext;
