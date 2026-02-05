@@ -36,13 +36,6 @@ export interface RPPGResult {
   };
 }
 
-export interface BiometricsResult {
-  faceLandmarker: FaceLandmarkerResult;
-  webEyeTrack: WebEyeTrackResult;
-  // rPPG: RPPGResult;
-  context: TrackingContext;
-}
-
 export interface TrackingContext {
   videoTime: number; // metadata.mediaTime (rVFC) OR performance.now() (fallback)
   systemTime: number; // Source: metadata.expectedDisplayTime (rVFC) OR performance.now() (fallback)
@@ -50,3 +43,20 @@ export interface TrackingContext {
   rawMetadata?: VideoFrameCallbackMetadata; // raw data for debugging (optional incase fallback)
   trace?: Array<{ step: string; timestamp: number }>;
 }
+
+export interface summaryResult {
+  faceDetected: boolean;
+  headRotation: Array<number>; // X,Y,Z from faceLandmarker
+  headPosition: Array<number>;
+  distance: number;
+}
+
+export interface BiometricsResult {
+  faceLandmarker: FaceLandmarkerResult;
+  webEyeTrack: WebEyeTrackResult;
+  // rPPG: RPPGResult;
+  context: TrackingContext;
+  summary: summaryResult;
+}
+
+
