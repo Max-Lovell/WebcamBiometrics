@@ -1,6 +1,8 @@
 import type {TrackingContext, VideoFrameData} from '../WebEyeTrack/types.ts'; // Note move these up?
 
 export default class WebcamClient {
+    public onStreamEnded?: () => void;
+
     private videoElement: HTMLVideoElement;
     private stream?: MediaStream;
     private frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>;
@@ -44,6 +46,14 @@ export default class WebcamClient {
             this.videoElement.srcObject = this.stream;
             this.isRunning = true;
 
+            // Disconnect handler
+            const track = this.stream.getVideoTracks()[0];
+            track.onended = () => {
+                console.warn("Camera disconnected (Lid closed or device removed)");
+                this.stopWebcam();
+                if (this.onStreamEnded) this.onStreamEnded();
+            };
+
             // Set the callback if provided
             if (frameCallback) {
                 this.frameCallback = frameCallback;
@@ -61,12 +71,17 @@ export default class WebcamClient {
             } else {
                 this._processFrames();
             }
-        } catch (error) {
+        } catch (e) {
             // Reset state on failure so the user can try again
             this.isRunning = false;
             this.stream = undefined;
-            console.error("Error accessing the webcam:", error);
-            throw error; // Re-throw so the UI knows it failed
+            // Handle errors
+            if (e instanceof DOMException && (e.name === 'NotFoundError' || e.name === 'NotReadableError')) {
+                console.warn("Camera not found. It might be disconnected or the laptop lid is closed.");
+            } else {
+                console.error("Error accessing the webcam:", e);
+            }
+            throw e; // Re-throw so the UI knows it failed
         }
     }
 
