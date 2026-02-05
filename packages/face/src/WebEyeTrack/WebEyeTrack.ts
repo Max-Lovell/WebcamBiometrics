@@ -59,7 +59,7 @@ export default class WebEyeTrack {
 
   // Instance variables
   private blazeGaze: BlazeGaze;
-  private faceWidthCm: number = 15;
+  private faceWidthCm: number = 13;
   private faceWidthComputed: boolean = false;
   private perspectiveMatrixSet: boolean = false;
   private perspectiveMatrix: Matrix = new Matrix(4, 4);
