@@ -108,13 +108,10 @@ self.onmessage = async (e: MessageEvent) => {
 
     case 'click':
       // Handle click event for re-calibration
-      // status = 'calib'; // TODO: consider blocking processing for calibration again in future?
       try {
         tracker.handleClick(payload.x, payload.y);
       } catch (err) {
         console.error(err);
-      } finally {
-        // status = 'idle'; // Reset to idle when handled.
       }
       break;
 
