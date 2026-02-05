@@ -10,8 +10,7 @@ let tracker: WebEyeTrack;
 
 // Instantiate heart rate estimator in global scope
 
-
-let status: 'idle' | 'inference' | 'calib' = 'idle';
+let status: 'initializing' | 'idle' | 'inference' | 'calib' = 'initializing';
 
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload } = e.data;
@@ -27,17 +26,23 @@ self.onmessage = async (e: MessageEvent) => {
           payload?.maxClickPoints    // new dual-buffer config
       );
       await tracker.initialize(payload?.modelPath);
-      self.postMessage({ type: 'ready' });
       status = 'idle';
+      self.postMessage({ type: 'ready' });
       break;
 
     case 'step':
-      if (status !== 'idle') {
+      if (status === 'initializing') {
+        if (payload.frame) payload.frame.close();
+        // Tell proxy we aren't ready so it unlocks
+        self.postMessage({type: 'stepError', error: 'Worker not initialized'});
+        return;
+      } else if (status !== 'idle') {
         if (payload.frame && typeof payload.frame.close === 'function') {
           payload.frame.close();
         }
         return;
       }
+
       status = 'inference';
       const { frame, context } = payload;
       context.trace.push({ step: 'worker_start', timestamp: performance.now() });

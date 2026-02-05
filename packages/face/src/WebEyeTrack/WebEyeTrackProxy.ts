@@ -17,7 +17,7 @@ export default class WebEyeTrackProxy {
   private adaptResolve: (() => void) | null = null;
   private adaptReject: ((error: Error) => void) | null = null;
 
-  public status: 'idle' | 'inference' | 'calib' = 'idle'; // initialise to idle
+  public status: 'initializing' | 'idle' | 'inference' | 'calib' = 'initializing'; // initialise to idle
 
   constructor(config: TrackerConfig = {}) {
 
@@ -32,7 +32,7 @@ export default class WebEyeTrackProxy {
       switch (mess.data.type) {
         case 'ready':
           console.log('[WebEyeTrackProxy] Worker is ready');
-
+          this.status = 'idle';
           break;
 
         case 'stepResult':
@@ -83,7 +83,7 @@ export default class WebEyeTrackProxy {
     this.inputHandler = (e: PointerEvent) => {
       // Prevent default browser zooming/scrolling behavior if necessary
       if (!e.isPrimary) return; // Optional: Ignore multi-touch secondary fingers
-      
+
       const viewWidth = document.documentElement.clientWidth || window.innerWidth;
       const viewHeight = document.documentElement.clientHeight || window.innerHeight;
 
