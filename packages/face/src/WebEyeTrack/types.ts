@@ -56,7 +56,7 @@ export interface BiometricsResult {
   webEyeTrack: WebEyeTrackResult;
   // rPPG: RPPGResult;
   context: TrackingContext;
-  summary: summaryResult;
+  summary?: summaryResult;
 }
 
 
