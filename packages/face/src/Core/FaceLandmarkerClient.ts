@@ -1,5 +1,6 @@
 import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
 import {FaceLandmarker, FilesetResolver} from "@mediapipe/tasks-vision";
+import type {VideoFrameData} from "../WebEyeTrack/types.ts";
 
 // References
 // https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/web_js#video
@@ -40,7 +41,7 @@ export default class FaceLandmarkerClient {
     }
   }
 
-  async processFrame(frame: ImageData | VideoFrame, timestamp: number): Promise<FaceLandmarkerResult | null> {
+  async processFrame(frame: VideoFrameData, timestamp: number): Promise<FaceLandmarkerResult | null> {
     if (!this.faceLandmarker) {
       console.error("FaceLandmarker is not loaded yet.");
       return null;
