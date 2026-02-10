@@ -9,12 +9,14 @@ export interface Point {
 export type FaceRegion = 'forehead' | 'leftCheek' | 'rightCheek';
 export type FaceROIs = Record<FaceRegion, number[]>;
 export const FACE_ROIS: FaceROIs = {
+    // See https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png
+        // Or https://github.com/google-ai-edge/mediapipe/blob/e0eef9791ebb84825197b49e09132d3643564ee2/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
     // Center forehead (Avoids hair/eyebrows)
-    forehead: [107, 66, 69, 109, 10, 338, 299, 296, 336, 9],
+    forehead: [9, 107, 66, 105, 63, 68, 54, 103, 67, 109, 10, 338, 297, 332, 284, 298, 293, 334, 296, 336],
     // Left Cheek (Subject's Left - Indices > 200)
-    leftCheek: [347, 348, 329, 355, 429, 279, 358, 423, 425, 280],
+    leftCheek: [350, 349, 348, 347, 346, 352, 376, 411, 427, 436, 426, 423, 331, 279, 429, 437, 343],
     // Right Cheek (Subject's Right - Indices < 200)
-    rightCheek: [118, 119, 100, 126, 209, 49, 129, 203, 205, 50]
+    rightCheek: [121, 120, 119, 118, 117, 123, 147, 187, 207, 216, 206, 203, 129, 49, 198, 217, 114]
 };
 
 export class HeartRateEstimator {
