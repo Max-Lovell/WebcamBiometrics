@@ -80,26 +80,27 @@ export class HeartRateEstimator {
 
         // Clip polygon region
         // TODO: need to check output of this vs other approaches - consider Point-in-polygon or ray-casting.
-        ctx.clearRect(0, 0, width, height);
-        ctx.save(); // So can return to same state later
+        // this.ctx.clearRect(0, 0, width, height);
+        this.ctx.save(); // So can return to same state later
         // Draw mask TODO: use Path2D() instead
-        ctx.beginPath();
-        ctx.moveTo(polygon[0].x, polygon[0].y);
-        polygon.forEach(p => ctx.lineTo(p.x, p.y));
-        ctx.clip(); //
+        this.ctx.beginPath();
+        this.ctx.moveTo(polygon[0].x - minX, polygon[0].y - minY);
+        for (let i = 1; i < polygon.length; i++) {
+            this.ctx.lineTo(polygon[i].x - minX, polygon[i].y - minY);
+        }
+        // this.ctx.closePath();
+        this.ctx.clip();
         // Draw frame to mask. CanvasImageSource = (Video, Image, or another Canvas)
-        ctx.drawImage(frame as CanvasImageSource, 0, 0, width, height);
-        ctx.restore(); // Return canvas state to what it was at save() (removes clip region)
-
-        // Extract bounding box to loop through less pixels
-        const imageData = ctx.getImageData(minX, minY, bWidth, bHeight).data;
-        // const imageData = ctx.getImageData(0, 0, width, height).data;
-
+        this.ctx.drawImage(frame as CanvasImageSource, minX, minY, bWidth, bHeight, 0, 0, bWidth, bHeight);
+        const imageData = this.ctx.getImageData(0, 0, bWidth, bHeight).data;
+        this.ctx.restore(); // Return canvas state to what it was at save() (removes clip region)
+        // this.logCanvas()
         // TODO: consider https://github.com/fast-average-color for averaging
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
         for (let i = 0; i < imageData.length; i += 4) {
-            const alpha = imageData[i + 3];
-            if (alpha === 255) { // Ignore transparent/translucent pixels outside (or on border) of polygon clip
+            // or use alpha > 0?? note border gets aliased hence translucent alpha
+            // TODO: alpha weighting - const weight = alpha / 255; rSum += imageData[i] * weight...
+            if (imageData[i + 3] === 255) { // Ignore transparent/translucent pixels outside (or on border) of polygon clip.
                 rSum += imageData[i];
                 gSum += imageData[i + 1];
                 bSum += imageData[i + 2];
