@@ -173,6 +173,17 @@ export class HeartRateEstimator {
         return {polygons, regionSamples: [this.regionSamples.forehead[nSamples-1], this.regionSamples.leftCheek[nSamples-1], this.regionSamples.rightCheek[nSamples-1]]};
     }
 
+    logCanvas() {
+        if (Math.random() < 0.01) { // run basically never.
+            this.offscreenCanvas?.convertToBlob().then(blob => {
+                const reader = new FileReader();
+                reader.onload = () => console.log("%c ROI SNAPSHOT ",
+                    "background: #222; color: #bada55; font-size: 20px;",
+                    reader.result); // Click this data-url in console to view image
+                reader.readAsDataURL(blob);
+            });
+        }
+    }
     // Hard reset (e.g. if tracking is lost or scene changes)
     reset() {
     }
