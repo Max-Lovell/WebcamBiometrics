@@ -6,16 +6,19 @@ export interface Point {
     y: number;
 }
 
-interface RGBSample {
-    r: number;
-    g: number;
-    b: number;
-    time: number; // for POS to handle varying frame rates
+interface RGBSamples {
+    r: Float32Array;
+    g: Float32Array;
+    b: Float32Array;
+    times: Float32Array;
+    // TODO: these two below should be global to the object as no need to duplicate for each channel
+    ptr: number;         // The write head
+    isFull: boolean;     // To know if we have enough data to run POS
 }
 
 export type FaceRegion = 'forehead' | 'leftCheek' | 'rightCheek';
-export type FaceROIs = Record<FaceRegion, number[]>;
-export const FACE_ROIS: FaceROIs = {
+export type LandmarkerROIs = Record<string, number[]>;
+export const FACE_ROIS: LandmarkerROIs = {
     // See https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png
         // Or https://github.com/google-ai-edge/mediapipe/blob/e0eef9791ebb84825197b49e09132d3643564ee2/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
     // Center forehead (Avoids hair/eyebrows)
@@ -29,12 +32,51 @@ export const FACE_ROIS: FaceROIs = {
 export class HeartRateEstimator {
     private offscreenCanvas: OffscreenCanvas | null = null;
     private ctx: OffscreenCanvasRenderingContext2D | null = null;
-    private regionSamples: Record<FaceRegion, RGBSample[]> = {
-        forehead: [],
-        leftCheek: [],
-        rightCheek: []
-    };
-    private MAX_SAMPLES = 300; // ~10 seconds at 30fps
+
+    private regionSamples: Record<string, RGBSamples>; // RGB samples for each region - store POS too?
+    private MAX_RGB_SAMPLES: number = 32;
+
+    private MAX_POS_SAMPLES: number = 300; // ~10 seconds at 30fps
+    private landmarkerROIs: LandmarkerROIs;
+
+    constructor(landmarkerROIs?: LandmarkerROIs, fps: number = 30) {
+        this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
+        // Number of samples of POS
+        this.MAX_POS_SAMPLES = fps*10 // 10 seconds of POS samples for FFT signal to be calculated
+        this.regionSamples = {} as Record<string, RGBSamples>;
+        this.MAX_RGB_SAMPLES = Math.ceil(fps*1.6) // 1.6 from POS paper where l=20fps*1.6 = 32 frames window size, probably arbitrary?
+        Object.keys(this.landmarkerROIs).forEach((region) => {
+            this.regionSamples[region as FaceRegion] = {
+                r: new Float32Array(this.MAX_POS_SAMPLES),
+                g: new Float32Array(this.MAX_POS_SAMPLES),
+                b: new Float32Array(this.MAX_POS_SAMPLES),
+                times: new Float32Array(this.MAX_POS_SAMPLES),
+                ptr: 0,
+                isFull: false
+            };
+        });
+
+    }
+
+    private addSample(region: string, sample: {r: number, g: number, b: number, time: number}) {
+        // Note doing this way stops any garbage collection spikes by not recreating
+        const data = this.regionSamples[region];
+
+        // Write at the current pointer
+        data.r[data.ptr] = sample.r;
+        data.g[data.ptr] = sample.g;
+        data.b[data.ptr] = sample.b;
+        data.times[data.ptr] = sample.time;
+
+        // Advance the pointer
+        data.ptr++;
+
+        // Wrap around if we hit the limit (Circular Buffer)
+        if (data.ptr >= this.MAX_RGB_SAMPLES) {
+            data.ptr = 0;
+            data.isFull = true;
+        }
+    }
 
     private initCanvases(width: number, height: number) {
         if (!this.offscreenCanvas) {
@@ -51,7 +93,7 @@ export class HeartRateEstimator {
         }
     }
 
-    getAverageRgb(frame: VideoFrameData, polygon: Point[]): RGBSample | null {
+    getAverageRgb(frame: VideoFrameData, polygon: Point[]) {
         const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
         const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
 
@@ -105,19 +147,17 @@ export class HeartRateEstimator {
                 rSum += imageData[i] * weight;
                 gSum += imageData[i + 1] * weight;
                 bSum += imageData[i + 2] * weight;
-                count += weight; // count becomes a float too!
+                count += weight;
             }
         }
+        // console.log({rSum, gSum, bSum, count});
         if (count === 0) return null;
-        // Shrink masked ROI into a 1x1 pixel - evil hack for mathematical average of all pixels in the polygon - doesn't work?
-        // averageCtx.drawImage(this.offscreenCanvas, 0, 0, width, height, 0, 0, 1, 1);
 
         // Return floats to preserve the decimal precision for the signal processor
         return {
             r: rSum / count,
             g: gSum / count,
             b: bSum / count,
-            time: performance.now()
         };
     }
 
@@ -131,47 +171,65 @@ export class HeartRateEstimator {
         }
     }
 
-    getRoiPixelCoordinates(frame: VideoFrameData, faceLandmarkerResult: FaceLandmarkerResult, landmarkerROIs: FaceROIs) {
+    getRoiPixelCoordinates(frame: VideoFrameData, faceLandmarkerResult: FaceLandmarkerResult) {
         const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
         const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
 
         const allLandmarks: NormalizedLandmark[] = faceLandmarkerResult.faceLandmarks[0]
-        return Object.values(landmarkerROIs).map(indices =>
-            indices.map(idx => this.getLandmarkPixelCoordinates(allLandmarks[idx], width, height))
+        return Object.values(this.landmarkerROIs).map(indices =>
+            indices.map(idx => ({
+                x: Math.floor(allLandmarks[idx].x * width),
+                y: Math.floor(allLandmarks[idx].y * height)
+            }))
         );
+        }
+
+    processLandmarks(frame: VideoFrameData, time: number, faceLandmarkerResult: FaceLandmarkerResult): Point[][] {
+        // TODO: PLAN
+        //  Optionally run skin detector, landmark occlusion detection
+        //  Get RGB average, Add sliding window, get POS estimate
+
+        // Extract useful info
+        const allLandmarks: NormalizedLandmark[] = faceLandmarkerResult.faceLandmarks[0];
+        const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
+        const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
+
+        const polygons = this.getRoiPixelCoordinates(frame, faceLandmarkerResult);
+        // Get polygon of ROI
+        // Use each region separately - Multi-Site/ Maximum Ratio Combination (MRC).
+
         // TODO: Occlusion detection using z to find points with other landmarks ontop of them, occupying same x/y?
         //  Might even be able to extract a visible face outline for use in a pull request? Furthest extreme x/y which is visible.
         //  Actually if landmarker already has a camera estimate and geometry then a ray trace would work best
-    }
-
-    processLandmarks(frame: VideoFrameData, time: number, faceLandmarkerResult: FaceLandmarkerResult, landmarkerROIs: FaceROIs = FACE_ROIS): Point[][] {
-        // TODO: PLAN
-        //  Extract point-in-polygon region from landmarks, using z to find obscured landmarks to avoid resampling
-        //  Optionally run skin detector
-        //  Calculate average RGB for pixels
-        const polygons = this.getRoiPixelCoordinates(frame, faceLandmarkerResult, landmarkerROIs);
-
-        // Get polygon of ROI
-        const regionKeys = Object.keys(landmarkerROIs) as FaceRegion[];
-
-        regionKeys.forEach((regionName, index) => {
-            const polygon = polygons[index];
+        Object.keys(this.landmarkerROIs).forEach((region) => {
+            const polygon = this.landmarkerROIs[region].map(i =>({
+                    x: Math.floor(allLandmarks[i].x * width),
+                    y: Math.floor(allLandmarks[i].y * height)
+            }))
             if (!polygon || polygon.length === 0) return;
 
             const rgbData = this.getAverageRgb(frame, polygon);
-            console.log({rgbData})
-            if (rgbData) {
-                this.regionSamples[regionName].push(rgbData);
-
-                // Maintain the sliding window for the signal processing phase
-                if (this.regionSamples[regionName].length > this.MAX_SAMPLES) {
-                    this.regionSamples[regionName].shift();
+            // Store in window
+            // Calc POS
+            if (rgbData) { // TODO: replace sliding window with better approach.
+                this.addSample(region, rgbData);
+                // Only process the signal if we have enough data (e.g., at least 32 frames)
+                if (this.regionSamples[region].isFull || this.regionSamples[region].ptr > this.MAX_RGB_SAMPLES) {
+                    // TODO: interpolate and calc POS, or calc POS and interpolate?
+                    // pos(regionSamples[region])
                 }
             }
         });
-        const nSamples= this.regionSamples.forehead.length
+
         // console.log(this.regionSamples)
-        return {polygons, regionSamples: [this.regionSamples.forehead[nSamples-1], this.regionSamples.leftCheek[nSamples-1], this.regionSamples.rightCheek[nSamples-1]]};
+        // TODO: return statement { regions: {forehead: {path: [], averageColour: , POS: }}, BPM: 0, POS: 0}
+        const recentSample = Object.values(this.regionSamples).map((region)=> {
+            // Note flashes when the bucket resets - not an issue though as values should only
+            return {r: region.r[region.ptr-1], g: region.g[region.ptr-1], b: region.b[region.ptr-1], ptr:region.ptr}
+        })
+
+        return {polygons, regionSamples: recentSample}
+    }
     }
 
     logCanvas() {
