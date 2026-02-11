@@ -98,13 +98,14 @@ export class HeartRateEstimator {
         // TODO: consider https://github.com/fast-average-color for averaging
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
         for (let i = 0; i < imageData.length; i += 4) {
-            // or use alpha > 0?? note border gets aliased hence translucent alpha
-            // TODO: alpha weighting - const weight = alpha / 255; rSum += imageData[i] * weight...
-            if (imageData[i + 3] === 255) { // Ignore transparent/translucent pixels outside (or on border) of polygon clip.
-                rSum += imageData[i];
-                gSum += imageData[i + 1];
-                bSum += imageData[i + 2];
-                count++;
+            // note border gets aliased hence translucent alpha - factor in here to reduce pixel popping in and out affecting mean
+            const alpha = imageData[i + 3];
+            if (alpha > 0) {
+                const weight = alpha / 255;
+                rSum += imageData[i] * weight;
+                gSum += imageData[i + 1] * weight;
+                bSum += imageData[i + 2] * weight;
+                count += weight; // count becomes a float too!
             }
         }
         if (count === 0) return null;
