@@ -55,20 +55,28 @@ export class HeartRateEstimator {
         const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
         const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
 
-        this.initCanvases(width, height);
-        const { ctx } = this;
-        if (!ctx) return null;
+        // Bounding Box with Safety Clamping to loop through less pixels
+        let minX = width, minY = height, maxX = 0, maxY = 0;
+        for (const p of polygon) {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+        }
 
-        // Bounding Box with Safety Clamping
-        const xs = polygon.map(p => p.x);
-        const ys = polygon.map(p => p.y);
-        const minX = Math.max(0, Math.floor(Math.min(...xs)));
-        const minY = Math.max(0, Math.floor(Math.min(...ys)));
-        const maxX = Math.min(width, Math.ceil(Math.max(...xs)));
-        const maxY = Math.min(height, Math.ceil(Math.max(...ys)));
-        const bWidth = maxX - minX;
-        const bHeight = maxY - minY;
+        minX = Math.max(0, Math.floor(minX));
+        minY = Math.max(0, Math.floor(minY));
+        const bWidth = Math.min(width - minX, Math.ceil(maxX - minX));
+        const bHeight = Math.min(height - minY, Math.ceil(maxY - minY));
         if (bWidth <= 0 || bHeight <= 0) return null;
+        // console.log({minX, minY, maxX, maxY, bWidth, bHeight});
+
+        this.initCanvases(bWidth, bHeight);
+        if(!this.ctx) return null;
+        // Consider bitmap approach:
+        //const roiBitmap = await createImageBitmap(frame, minX, minY, bWidth, bHeight);
+        //const roiCanvas = new OffscreenCanvas(bWidth, bHeight); // Small canvas, would need to make coords relative to this
+        //const roiCtx = roiCanvas.getContext('2d', { willReadFrequently: true });
 
         // Clip polygon region
         // TODO: need to check output of this vs other approaches - consider Point-in-polygon or ray-casting.
