@@ -37,9 +37,17 @@ export class HeartRateEstimator {
     private MAX_SAMPLES = 300; // ~10 seconds at 30fps
 
     private initCanvases(width: number, height: number) {
-        if (!this.offscreenCanvas || this.offscreenCanvas.width !== width || this.offscreenCanvas.height !== height) {
+        if (!this.offscreenCanvas) {
             this.offscreenCanvas = new OffscreenCanvas(width, height);
             this.ctx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        // Note resize auto-clears context
+        if (this.offscreenCanvas.width !== width || this.offscreenCanvas.height !== height) {
+            this.offscreenCanvas.width = width;
+            this.offscreenCanvas.height = height;
+        } else {
+            // Dimensions are the same, so we must clear it manually
+            this.ctx?.clearRect(0, 0, width, height);
         }
     }
 
