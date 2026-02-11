@@ -78,6 +78,29 @@ export class HeartRateEstimator {
         }
     }
 
+    private getUnrolledSignal(region: string): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float32Array } {
+        // TODO: this returns new arrays - pre-allocate Work Buffers in constructor and use buffer.set() to copy data.
+        const data = this.regionSamples[region];
+        const n = data.isFull ? this.MAX_RGB_SAMPLES : data.ptr;
+        const r = new Float32Array(n);
+        const g = new Float32Array(n);
+        const b = new Float32Array(n);
+        const t = new Float32Array(n);
+
+        // If buffer is full, start reading from 'ptr' (the oldest data)
+        // If not full, start reading from 0
+        const start = data.isFull ? data.ptr : 0;
+
+        for (let i = 0; i < n; i++) {
+            const idx = (start + i) % this.MAX_RGB_SAMPLES;
+            r[i] = data.r[idx];
+            g[i] = data.g[idx];
+            b[i] = data.b[idx];
+            t[i] = data.times[idx];
+        }
+        return { r, g, b, times: t };
+    }
+
     private initCanvases(width: number, height: number) {
         if (!this.offscreenCanvas) {
             this.offscreenCanvas = new OffscreenCanvas(width, height);
@@ -215,6 +238,7 @@ export class HeartRateEstimator {
                 this.addSample(region, rgbData);
                 // Only process the signal if we have enough data (e.g., at least 32 frames)
                 if (this.regionSamples[region].isFull || this.regionSamples[region].ptr > this.MAX_RGB_SAMPLES) {
+                    const unrolled = this.getUnrolledSignal(region); // Puts circular buffer in order for POS
                     // TODO: interpolate and calc POS, or calc POS and interpolate?
                     // pos(regionSamples[region])
                 }
@@ -223,12 +247,16 @@ export class HeartRateEstimator {
 
         // console.log(this.regionSamples)
         // TODO: return statement { regions: {forehead: {path: [], averageColour: , POS: }}, BPM: 0, POS: 0}
-        const recentSample = Object.values(this.regionSamples).map((region)=> {
-            // Note flashes when the bucket resets - not an issue though as values should only
-            return {r: region.r[region.ptr-1], g: region.g[region.ptr-1], b: region.b[region.ptr-1], ptr:region.ptr}
-        })
-
-        return {polygons, regionSamples: recentSample}
+        const recentSamples = Object.keys(this.regionSamples).map(name => {
+            const data = this.regionSamples[name];
+            const lastIdx = (data.ptr - 1 + this.MAX_RGB_SAMPLES) % this.MAX_RGB_SAMPLES;
+            return {
+                r: data.r[lastIdx],
+                g: data.g[lastIdx],
+                b: data.b[lastIdx]
+            };
+        });
+        return {polygons, regionSamples: recentSamples}
     }
     }
 
