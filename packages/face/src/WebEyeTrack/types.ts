@@ -51,12 +51,17 @@ export interface summaryResult {
   distance: number;
 }
 
+export interface Debug {
+
+}
+
 export interface BiometricsResult {
   faceLandmarker: FaceLandmarkerResult | null; // Note should this be nullable?
   webEyeTrack: WebEyeTrackResult;
   // rPPG: RPPGResult;
   context: TrackingContext;
   summary?: summaryResult;
+  debug?: Debug;
 }
 
 
