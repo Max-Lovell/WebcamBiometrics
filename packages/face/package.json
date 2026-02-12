@@ -12,7 +12,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "mathjs": "^15.1.0",
     "ml-matrix": "^6.12.1",
-    "@webcambiometrics/vitals": "^1.0.0"
+    "@webcambiometrics/vitals": "file:../../"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
