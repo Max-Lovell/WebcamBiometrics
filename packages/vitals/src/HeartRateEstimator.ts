@@ -187,13 +187,6 @@ export class HeartRateEstimator {
     // TODO separate function to process given coordinates too, e.g. for doing finger-phone rPPG with no landmarks
     // processFrame(frame: VideoFrameData, frameContext: TrackingContext, coordinates?: Point[]) {}
 
-    getLandmarkPixelCoordinates(landmark: NormalizedLandmark, width: number, height: number): Point {
-        return {
-            x: Math.floor(landmark.x * width),
-            y: Math.floor(landmark.y * height),
-        }
-    }
-
     getRoiPixelCoordinates(frame: VideoFrameData, faceLandmarkerResult: FaceLandmarkerResult) {
         const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
         const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
@@ -205,7 +198,7 @@ export class HeartRateEstimator {
                 y: Math.floor(allLandmarks[idx].y * height)
             }))
         );
-        }
+    }
 
     processLandmarks(frame: VideoFrameData, time: number, faceLandmarkerResult: FaceLandmarkerResult): Point[][] {
         // TODO: PLAN
@@ -217,10 +210,7 @@ export class HeartRateEstimator {
         const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
         const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
 
-        const polygons = this.getRoiPixelCoordinates(frame, faceLandmarkerResult);
-        // Get polygon of ROI
         // Use each region separately - Multi-Site/ Maximum Ratio Combination (MRC).
-
         // TODO: Occlusion detection using z to find points with other landmarks ontop of them, occupying same x/y?
         //  Might even be able to extract a visible face outline for use in a pull request? Furthest extreme x/y which is visible.
         //  Actually if landmarker already has a camera estimate and geometry then a ray trace would work best
