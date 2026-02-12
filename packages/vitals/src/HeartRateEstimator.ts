@@ -53,70 +53,91 @@ export class HeartRateEstimator {
     private offscreenCanvas: OffscreenCanvas | null = null;
     private ctx: OffscreenCanvasRenderingContext2D | null = null;
 
-    private regionSamples: Record<string, RGBSamples>; // RGB samples for each region - store POS too?
+    private landmarkerROIs: LandmarkerROIs;
+
     private MAX_RGB_SAMPLES: number = 32;
+    private rgbRingBuffer: RGBBuffer; // RGB samples for each region - store POS too?
 
     private MAX_POS_SAMPLES: number = 300; // ~10 seconds at 30fps
-    private landmarkerROIs: LandmarkerROIs;
+    private posHRingBuffer: POSHBuffer;
+
 
     constructor(landmarkerROIs?: LandmarkerROIs, fps: number = 30) {
         this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
-        // Number of samples of POS
-        this.MAX_POS_SAMPLES = fps*10 // 10 seconds of POS samples for FFT signal to be calculated
-        this.regionSamples = {} as Record<string, RGBSamples>;
         this.MAX_RGB_SAMPLES = Math.ceil(fps*1.6) // 1.6 from POS paper where l=20fps*1.6 = 32 frames window size, probably arbitrary?
-        Object.keys(this.landmarkerROIs).forEach((region) => {
-            this.regionSamples[region as FaceRegion] = {
-                r: new Float32Array(this.MAX_POS_SAMPLES),
-                g: new Float32Array(this.MAX_POS_SAMPLES),
-                b: new Float32Array(this.MAX_POS_SAMPLES),
-                times: new Float32Array(this.MAX_POS_SAMPLES),
-                ptr: 0,
-                isFull: false
-            };
-        });
 
+        // Initialize region buffers
+        const regionRgbBuffers: RGBBuffer['regions'] = {};
+        const regionPOSBuffers: POSHBuffer['regions'] = {};
+        for (let key of Object.keys(this.landmarkerROIs)) {
+            regionRgbBuffers[key] = {
+                r: new Float32Array(this.MAX_RGB_SAMPLES),
+                g: new Float32Array(this.MAX_RGB_SAMPLES),
+                b: new Float32Array(this.MAX_RGB_SAMPLES),
+            }
+            regionPOSBuffers[key] = new Float32Array(this.MAX_POS_SAMPLES)
+        }
+
+        // Instantiate RGB ring buffer
+        this.rgbRingBuffer = {
+            index: 0,
+            ready: false,
+            times: new Float32Array(this.MAX_RGB_SAMPLES),
+            regions: regionRgbBuffers
+        }
+
+        // Make POS samples array
+        this.MAX_POS_SAMPLES = fps*10 // 10 seconds of POS samples for FFT signal to be calculated
+        this.posHRingBuffer = {
+            index: 0,
+            ready: false,
+            h: new Float32Array(this.MAX_POS_SAMPLES),
+            regions: regionPOSBuffers
+        }
     }
 
-    private addSample(region: string, sample: {r: number, g: number, b: number, time: number}) {
-        // Note doing this way stops any garbage collection spikes by not recreating
-        const data = this.regionSamples[region];
+    private addSample(region: string, sample: {r: number, g: number, b: number}, time: number) {
+        // Write at the current index
+        const idx = this.rgbRingBuffer.index;
 
-        // Write at the current pointer
-        data.r[data.ptr] = sample.r;
-        data.g[data.ptr] = sample.g;
-        data.b[data.ptr] = sample.b;
-        data.times[data.ptr] = sample.time;
+        this.rgbRingBuffer.regions[region].r[idx] = sample.r;
+        this.rgbRingBuffer.regions[region].g[idx] = sample.g;
+        this.rgbRingBuffer.regions[region].b[idx] = sample.b;
+        this.rgbRingBuffer.times[idx] = time;
 
-        // Advance the pointer
-        data.ptr++;
+        // Note: index advancement happens once per frame for all regions
+        // This should be called from a common location after all regions are processed
+    }
+
+    private advanceRGBBuffer() {
+        // Advance the index
+        this.rgbRingBuffer.index++;
 
         // Wrap around if we hit the limit (Circular Buffer)
-        if (data.ptr >= this.MAX_RGB_SAMPLES) {
-            data.ptr = 0;
-            data.isFull = true;
+        if (this.rgbRingBuffer.index >= this.MAX_RGB_SAMPLES) {
+            this.rgbRingBuffer.index = 0;
+            this.rgbRingBuffer.ready = true;
         }
     }
 
     private getUnrolledSignal(region: string): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float32Array } {
         // TODO: this returns new arrays - pre-allocate Work Buffers in constructor and use buffer.set() to copy data.
-        const data = this.regionSamples[region];
-        const n = data.isFull ? this.MAX_RGB_SAMPLES : data.ptr;
+        const n = this.rgbRingBuffer.ready ? this.MAX_RGB_SAMPLES : this.rgbRingBuffer.index;
         const r = new Float32Array(n);
         const g = new Float32Array(n);
         const b = new Float32Array(n);
         const t = new Float32Array(n);
 
-        // If buffer is full, start reading from 'ptr' (the oldest data)
+        // If buffer is full, start reading from 'index' (the oldest data)
         // If not full, start reading from 0
-        const start = data.isFull ? data.ptr : 0;
+        const start = this.rgbRingBuffer.ready ? this.rgbRingBuffer.index : 0;
 
         for (let i = 0; i < n; i++) {
             const idx = (start + i) % this.MAX_RGB_SAMPLES;
-            r[i] = data.r[idx];
-            g[i] = data.g[idx];
-            b[i] = data.b[idx];
-            t[i] = data.times[idx];
+            r[i] = this.rgbRingBuffer.regions[region].r[idx];
+            g[i] = this.rgbRingBuffer.regions[region].g[idx];
+            b[i] = this.rgbRingBuffer.regions[region].b[idx];
+            t[i] = this.rgbRingBuffer.times[idx];
         }
         return { r, g, b, times: t };
     }
@@ -220,7 +241,7 @@ export class HeartRateEstimator {
         );
     }
 
-    processLandmarks(frame: VideoFrameData, time: number, faceLandmarkerResult: FaceLandmarkerResult): Point[][] {
+    processLandmarks(frame: VideoFrameData, time: number, faceLandmarkerResult: FaceLandmarkerResult): HeartRateResult {
         // TODO: PLAN
         //  Optionally run skin detector, landmark occlusion detection
         //  Get RGB average, Add sliding window, get POS estimate
@@ -230,44 +251,69 @@ export class HeartRateEstimator {
         const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
         const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
 
+        const regionResults: HeartRateResult['regions'] = {};
+
         // Use each region separately - Multi-Site/ Maximum Ratio Combination (MRC).
         // TODO: Occlusion detection using z to find points with other landmarks ontop of them, occupying same x/y?
         //  Might even be able to extract a visible face outline for use in a pull request? Furthest extreme x/y which is visible.
         //  Actually if landmarker already has a camera estimate and geometry then a ray trace would work best
         Object.keys(this.landmarkerROIs).forEach((region) => {
             const polygon = this.landmarkerROIs[region].map(i =>({
-                    x: Math.floor(allLandmarks[i].x * width),
-                    y: Math.floor(allLandmarks[i].y * height)
+                x: Math.floor(allLandmarks[i].x * width),
+                y: Math.floor(allLandmarks[i].y * height)
             }))
-            if (!polygon || polygon.length === 0) return;
+
+            if (!polygon || polygon.length === 0) {
+                regionResults[region] = {
+                    polygon: [],
+                    averageRGB: null,
+                    posH: null
+                };
+                return;
+            }
+            // TODO: deal with obscured landmarks or ones out of frame - check what effect out of frame has?
 
             const rgbData = this.getAverageRgb(frame, polygon);
+
+            // Initialize region result
+            regionResults[region] = {
+                polygon: polygon,
+                averageRGB: rgbData,
+                posH: null // TODO: calculate POS H value for this region
+            };
+
             // Store in window
-            // Calc POS
             if (rgbData) { // TODO: replace sliding window with better approach.
-                this.addSample(region, rgbData);
+                this.addSample(region, rgbData, time);
+
                 // Only process the signal if we have enough data (e.g., at least 32 frames)
-                if (this.regionSamples[region].isFull || this.regionSamples[region].ptr > this.MAX_RGB_SAMPLES) {
+                if (this.rgbRingBuffer.ready || this.rgbRingBuffer.index >= this.MAX_RGB_SAMPLES) {
                     const unrolled = this.getUnrolledSignal(region); // Puts circular buffer in order for POS
                     // TODO: interpolate and calc POS, or calc POS and interpolate?
+                    // TODO: consider interpolate each time vs batch interpolation - doing batch interpolation here for ease.
                     // pos(regionSamples[region])
+                    // regionResults[region].posH = calculatedPosH; // Placeholder for actual calculation
                 }
             }
         });
 
-        // console.log(this.regionSamples)
-        // TODO: return statement { regions: {forehead: {path: [], averageColour: , POS: }}, BPM: 0, POS: 0}
-        const recentSamples = Object.keys(this.regionSamples).map(name => {
-            const data = this.regionSamples[name];
-            const lastIdx = (data.ptr - 1 + this.MAX_RGB_SAMPLES) % this.MAX_RGB_SAMPLES;
-            return {
-                r: data.r[lastIdx],
-                g: data.g[lastIdx],
-                b: data.b[lastIdx]
-            };
-        });
-        return {polygons, regionSamples: recentSamples}
+        // Advance buffer index once after processing all regions
+        this.advanceRGBBuffer();
+
+        // Return result with placeholders for BPM and overall POS
+        return {
+            timestamp: time,
+            posH: null, // TODO: calculate fused POS H across all regions
+            bpm: null, // TODO: calculate BPM from POS signal via FFT
+            confidence: 1.0, // TODO: calculate actual confidence metric
+            regions: regionResults
+        };
     }
+
+    private interpolate(region: string) {
+        // TODO: implement interpolation between frame times for cleaner FFT
+        //  Note difference between jittered time frame and dropped frame
+        //  could track dropped frames and interpolate that data differently...
     }
 
     logCanvas() {
