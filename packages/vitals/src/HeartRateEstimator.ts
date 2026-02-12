@@ -6,21 +6,41 @@ export interface Point {
     y: number;
 }
 
-interface RGBSamples {
-    r: Float32Array;
-    g: Float32Array;
-    b: Float32Array;
+interface RGBBuffer { // TODO: should this hold interpolated or raw values?
+    index: number;
+    ready: boolean;
     times: Float32Array;
-    // TODO: these two below should be global to the object as no need to duplicate for each channel
-    ptr: number;         // The write head
-    isFull: boolean;     // To know if we have enough data to run POS
+    regions: Record<string, { // keyed by region name
+        r: Float32Array;
+        g: Float32Array;
+        b: Float32Array;
+    }>;
+}
+
+interface POSHBuffer {
+    index: number;
+    ready: boolean; // min buffer length reached
+    h: Float32Array; // fused H over all regions
+    regions: Record<string, Float32Array>; // Per-region H
+}
+
+export interface HeartRateResult {
+    timestamp: number;
+    posH: number | null
+    bpm: number | null;
+    confidence: number;
+    regions: Record<string, {
+        polygon: Point[];
+        averageRGB: { r: number, g: number, b: number } | null;
+        posH: number | null;
+    }>;
 }
 
 export type FaceRegion = 'forehead' | 'leftCheek' | 'rightCheek';
 export type LandmarkerROIs = Record<string, number[]>;
 export const FACE_ROIS: LandmarkerROIs = {
     // See https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png
-        // Or https://github.com/google-ai-edge/mediapipe/blob/e0eef9791ebb84825197b49e09132d3643564ee2/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
+    // Or https://github.com/google-ai-edge/mediapipe/blob/e0eef9791ebb84825197b49e09132d3643564ee2/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
     // Center forehead (Avoids hair/eyebrows)
     forehead: [9, 107, 66, 105, 63, 68, 54, 103, 67, 109, 10, 338, 297, 332, 284, 298, 293, 334, 296, 336],
     // Left Cheek (Subject's Left - Indices > 200)
