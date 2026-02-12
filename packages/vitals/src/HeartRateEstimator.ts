@@ -1,5 +1,6 @@
 import type {VideoFrameData} from "./types";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
+import {calculatePOS} from "./signal/POS";
 
 export interface Point {
     x: number;
@@ -140,6 +141,22 @@ export class HeartRateEstimator {
             t[i] = this.rgbRingBuffer.times[idx];
         }
         return { r, g, b, times: t };
+    }
+
+    private addPOSValue(region: string, hValue: number) {
+        const idx = this.posHRingBuffer.index;
+
+        // Overlap-add the mean-centered value
+        this.posHRingBuffer.regions[region][idx] += hValue;
+    }
+
+    private advancePOSBuffer() {
+        this.posHRingBuffer.index++;
+
+        if (this.posHRingBuffer.index >= this.MAX_POS_SAMPLES) {
+            this.posHRingBuffer.index = 0;
+            this.posHRingBuffer.ready = true;
+        }
     }
 
     private initCanvases(width: number, height: number) {
@@ -289,7 +306,13 @@ export class HeartRateEstimator {
                 // Only process the signal if we have enough data (e.g., at least 32 frames)
                 if (this.rgbRingBuffer.ready || this.rgbRingBuffer.index >= this.MAX_RGB_SAMPLES) {
                     const unrolled = this.getUnrolledSignal(region); // Puts circular buffer in order for POS
-                    // TODO: interpolate and calc POS, or calc POS and interpolate?
+                    // TODO: interpolate
+                    const h = calculatePOS(unrolled.r,unrolled.g,unrolled.b)
+                    // CLAUDE LOOK HERE
+                    regionResults[region].posH = h;
+                    this.addPOSValue(region, h);
+
+
                     // TODO: consider interpolate each time vs batch interpolation - doing batch interpolation here for ease.
                     // pos(regionSamples[region])
                     // regionResults[region].posH = calculatedPosH; // Placeholder for actual calculation
@@ -297,13 +320,26 @@ export class HeartRateEstimator {
             }
         });
 
+        // Calculate fused POS by averaging all valid region values
+        const validRegionPOSValues = Object.values(regionResults)
+            .map(r => r.posH)
+            .filter((h): h is number => h !== null);
+
+        if (validRegionPOSValues.length > 0) {
+            const fusedH = validRegionPOSValues.reduce((sum, h) => sum + h, 0) / validRegionPOSValues.length;
+            this.posHRingBuffer.h[this.posHRingBuffer.index] += fusedH;
+            this.advancePOSBuffer();
+        }
+
         // Advance buffer index once after processing all regions
         this.advanceRGBBuffer();
 
         // Return result with placeholders for BPM and overall POS
         return {
             timestamp: time,
-            posH: null, // TODO: calculate fused POS H across all regions
+            posH: validRegionPOSValues.length > 0
+                ? this.posHRingBuffer.h[(this.posHRingBuffer.index - 1 + this.MAX_POS_SAMPLES) % this.MAX_POS_SAMPLES]
+                : null,
             bpm: null, // TODO: calculate BPM from POS signal via FFT
             confidence: 1.0, // TODO: calculate actual confidence metric
             regions: regionResults
