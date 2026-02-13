@@ -121,6 +121,22 @@ export class HeartRateEstimator {
         }
     }
 
+    private addPOSValue(region: string, hValue: number) {
+        const idx = this.posHRingBuffer.index;
+
+        // Overlap-add the mean-centered value TODO: need overall POS buffer added to here as well.
+        this.posHRingBuffer.regions[region][idx] += hValue;
+    }
+
+    private advancePOSBuffer() {
+        this.posHRingBuffer.index++; // TODO: abstract general advance and addToBuffer function?
+
+        if (this.posHRingBuffer.index >= this.MAX_POS_SAMPLES) {
+            this.posHRingBuffer.index = 0;
+            this.posHRingBuffer.ready = true;
+        }
+    }
+
     private getUnrolledSignal(region: string): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array } {
         // TODO: this returns new arrays - pre-allocate Work Buffers in constructor and use buffer.set() to copy data.
         const n = this.rgbRingBuffer.ready ? this.MAX_RGB_SAMPLES : this.rgbRingBuffer.index;
@@ -143,21 +159,6 @@ export class HeartRateEstimator {
         return { r, g, b, times: t };
     }
 
-    private addPOSValue(region: string, hValue: number) {
-        const idx = this.posHRingBuffer.index;
-
-        // Overlap-add the mean-centered value
-        this.posHRingBuffer.regions[region][idx] += hValue;
-    }
-
-    private advancePOSBuffer() {
-        this.posHRingBuffer.index++;
-
-        if (this.posHRingBuffer.index >= this.MAX_POS_SAMPLES) {
-            this.posHRingBuffer.index = 0;
-            this.posHRingBuffer.ready = true;
-        }
-    }
 
     private initCanvases(width: number, height: number) {
         if (!this.offscreenCanvas) {
@@ -349,7 +350,7 @@ export class HeartRateEstimator {
     }
 
     private interpolateRGB(
-        unrolled: { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array },
+        unrolled: { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array }, // TODO: make interface.
         targetFps: number
     ): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array } {
         // Linear interpolation
@@ -367,7 +368,7 @@ export class HeartRateEstimator {
         const targetSamples = Math.ceil(duration * targetFps / 1000) + 1; // +1 for fenceposting
         const dt = duration / (targetSamples - 1);
 
-        // Allocate output arrays
+        // Allocate output arrays -- TODO: pre-allocate
         const interpR = new Float32Array(targetSamples);
         const interpG = new Float32Array(targetSamples);
         const interpB = new Float32Array(targetSamples);
