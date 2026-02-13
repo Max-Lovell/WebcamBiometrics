@@ -131,7 +131,7 @@ export class HeartRateEstimator {
 
         // If buffer is full, start reading from 'index' (the oldest data)
         // If not full, start reading from 0
-        const start = this.rgbRingBuffer.ready ? this.rgbRingBuffer.index : 0;
+        const start = this.rgbRingBuffer.ready ? (this.rgbRingBuffer.index + 1) : 0;
 
         for (let i = 0; i < n; i++) {
             const idx = (start + i) % this.MAX_RGB_SAMPLES;
