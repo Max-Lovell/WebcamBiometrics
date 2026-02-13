@@ -1,6 +1,7 @@
 import type {VideoFrameData} from "./types";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import {calculatePOS} from "./signal/POS";
+import { BandpassFilter } from "./signal/BandpassFilter";
 
 export interface Point {
     x: number;
@@ -62,9 +63,13 @@ export class HeartRateEstimator {
     private MAX_POS_SAMPLES: number = 300; // ~10 seconds at 30fps
     private posHRingBuffer: POSHBuffer;
 
+    private bandpassFilter: BandpassFilter;
 
     constructor(landmarkerROIs?: LandmarkerROIs, fps: number = 30) {
+        this.bandpassFilter = BandpassFilter.fromBPM(42, 240, 30);
+
         this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
+
         this.MAX_RGB_SAMPLES = Math.ceil(fps*1.6) // 1.6 from POS paper where l=20fps*1.6 = 32 frames window size, probably arbitrary?
 
         // Initialize region buffers
@@ -330,7 +335,8 @@ export class HeartRateEstimator {
 
         if (validRegionPOSValues.length > 0) {
             const fusedH = validRegionPOSValues.reduce((sum, h) => sum + h, 0) / validRegionPOSValues.length;
-            this.posHRingBuffer.h[this.posHRingBuffer.index] += fusedH;
+            const filteredH = this.bandpassFilter.process(fusedH);
+            this.posHRingBuffer.h[this.posHRingBuffer.index] += filteredH;
             this.advancePOSBuffer();
         }
 
@@ -340,9 +346,7 @@ export class HeartRateEstimator {
         // Return result with placeholders for BPM and overall POS
         return {
             timestamp: time,
-            posH: validRegionPOSValues.length > 0
-                ? this.posHRingBuffer.h[(this.posHRingBuffer.index - 1 + this.MAX_POS_SAMPLES) % this.MAX_POS_SAMPLES]
-                : null,
+            posH: this.posHRingBuffer.h[this.posHRingBuffer.index],
             bpm: null, // TODO: calculate BPM from POS signal via FFT
             confidence: 1.0, // TODO: calculate actual confidence metric
             regions: regionResults
