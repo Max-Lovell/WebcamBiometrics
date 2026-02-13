@@ -10,7 +10,7 @@ export interface Point {
 interface RGBBuffer { // TODO: should this hold interpolated or raw values?
     index: number;
     ready: boolean;
-    times: Float32Array;
+    times: Float64Array; // Note DOMHighResTimeStamp is a double, 32 bits will result in timestamps that look indentical at 20FPS+.
     regions: Record<string, { // keyed by region name
         r: Float32Array;
         g: Float32Array;
@@ -83,7 +83,7 @@ export class HeartRateEstimator {
         this.rgbRingBuffer = {
             index: 0,
             ready: false,
-            times: new Float32Array(this.MAX_RGB_SAMPLES),
+            times: new Float64Array(this.MAX_RGB_SAMPLES),
             regions: regionRgbBuffers
         }
 
@@ -121,13 +121,13 @@ export class HeartRateEstimator {
         }
     }
 
-    private getUnrolledSignal(region: string): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float32Array } {
+    private getUnrolledSignal(region: string): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array } {
         // TODO: this returns new arrays - pre-allocate Work Buffers in constructor and use buffer.set() to copy data.
         const n = this.rgbRingBuffer.ready ? this.MAX_RGB_SAMPLES : this.rgbRingBuffer.index;
         const r = new Float32Array(n);
         const g = new Float32Array(n);
         const b = new Float32Array(n);
-        const t = new Float32Array(n);
+        const t = new Float64Array(n);
 
         // If buffer is full, start reading from 'index' (the oldest data)
         // If not full, start reading from 0
