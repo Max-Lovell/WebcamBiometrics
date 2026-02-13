@@ -274,7 +274,7 @@ export class HeartRateEstimator {
         // TODO: Occlusion detection using z to find points with other landmarks ontop of them, occupying same x/y?
         //  Might even be able to extract a visible face outline for use in a pull request? Furthest extreme x/y which is visible.
         //  Actually if landmarker already has a camera estimate and geometry then a ray trace would work best
-        Object.keys(this.landmarkerROIs).forEach((region) => {
+        Object.keys(this.landmarkerROIs).forEach((region) => { //TODO: Maybe try doing all as one region and check speed.
             const polygon = this.landmarkerROIs[region].map(i =>({
                 x: Math.floor(allLandmarks[i].x * width),
                 y: Math.floor(allLandmarks[i].y * height)
@@ -305,13 +305,15 @@ export class HeartRateEstimator {
 
                 // Only process the signal if we have enough data (e.g., at least 32 frames)
                 if (this.rgbRingBuffer.ready || this.rgbRingBuffer.index >= this.MAX_RGB_SAMPLES) {
+                    // TODO: unrolled should save to global array rather than creating new ones.
                     const unrolled = this.getUnrolledSignal(region); // Puts circular buffer in order for POS
-                    // TODO: interpolate
-                    const h = calculatePOS(unrolled.r,unrolled.g,unrolled.b)
+                    // TODO: interpolate each new value to 30FPS when it comes in and save to interpolated buffer.
+                    const interpolated = this.interpolateRGB(unrolled, 30);
+                    const h = calculatePOS(interpolated.r, interpolated.g, interpolated.b);
+
                     // CLAUDE LOOK HERE
                     regionResults[region].posH = h;
                     this.addPOSValue(region, h);
-
 
                     // TODO: consider interpolate each time vs batch interpolation - doing batch interpolation here for ease.
                     // pos(regionSamples[region])
@@ -405,7 +407,7 @@ export class HeartRateEstimator {
 
         return { r: interpR, g: interpG, b: interpB, times: interpTimes };
     }
-    
+
     logCanvas() {
         if (Math.random() < 0.01) { // run basically never.
             this.offscreenCanvas?.convertToBlob().then(blob => {
