@@ -346,12 +346,66 @@ export class HeartRateEstimator {
         };
     }
 
-    private interpolate(region: string) {
-        // TODO: implement interpolation between frame times for cleaner FFT
-        //  Note difference between jittered time frame and dropped frame
-        //  could track dropped frames and interpolate that data differently...
-    }
+    private interpolateRGB(
+        unrolled: { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array },
+        targetFps: number
+    ): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array } {
+        // Linear interpolation
+        const { r, g, b, times } = unrolled;
 
+        // Need at least 2 samples to interpolate
+        if (times.length < 2) return unrolled;
+
+        // Calculate time range
+        const startTime = times[0];
+        const endTime = times[times.length - 1];
+        const duration = endTime - startTime;
+
+        // Calculate number of evenly-spaced samples we want
+        const targetSamples = Math.ceil(duration * targetFps / 1000) + 1; // +1 for fenceposting
+        const dt = duration / (targetSamples - 1);
+
+        // Allocate output arrays
+        const interpR = new Float32Array(targetSamples);
+        const interpG = new Float32Array(targetSamples);
+        const interpB = new Float32Array(targetSamples);
+        const interpTimes = new Float64Array(targetSamples);
+
+        let sourceIdx = 0;
+
+        for (let i = 0; i < targetSamples; i++) {
+            const targetTime = startTime + i * dt;
+            interpTimes[i] = targetTime;
+
+            // Find bracket: move sourceIdx forward until times[sourceIdx+1] >= targetTime
+            while (sourceIdx < times.length - 1 && times[sourceIdx + 1] < targetTime) {
+                sourceIdx++;
+            }
+
+            if (sourceIdx >= times.length - 1) {
+                // Past the end, use last values
+                interpR[i] = r[r.length - 1];
+                interpG[i] = g[g.length - 1];
+                interpB[i] = b[b.length - 1];
+            } else {
+                // Linear interpolation
+                const t0 = times[sourceIdx];
+                const t1 = times[sourceIdx + 1];
+                const alpha = (targetTime - t0) / (t1 - t0);
+
+                interpR[i] = r[sourceIdx] + alpha * (r[sourceIdx + 1] - r[sourceIdx]);
+                interpG[i] = g[sourceIdx] + alpha * (g[sourceIdx + 1] - g[sourceIdx]);
+                interpB[i] = b[sourceIdx] + alpha * (b[sourceIdx + 1] - b[sourceIdx]);
+            }
+        }
+
+        // console.log({times, interpTimes, inputFPS: targetFps,
+        //     interpolatedFPS: Math.round(((interpTimes.length-1)/duration)*1000),
+        //     actualFPS: Math.round((times.length/duration)*1000)})
+
+        return { r: interpR, g: interpG, b: interpB, times: interpTimes };
+    }
+    
     logCanvas() {
         if (Math.random() < 0.01) { // run basically never.
             this.offscreenCanvas?.convertToBlob().then(blob => {
