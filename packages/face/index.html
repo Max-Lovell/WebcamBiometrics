@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Biometrics</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+<div id="debug-view">
+    <div class="debug-item">
+        <p>CPU Eye Patch (Current)</p>
+        <canvas id="cpu_patch" width="512" height="128"></canvas>
+    </div>
+    <div class="debug-item">
+        <p>GPU Eye Patch (New)</p>
+        <canvas id="gpu_patch" width="512" height="128"></canvas>
+    </div>
+</div>
+    <div id="cursor"></div>
+    <div id="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+<canvas id="pos_graph" style="position:fixed;bottom:10px;right:10px;width:300px;height:100px;background:#111;border:1px solid #333;z-index:9998"></canvas>
+<div id="bpm_display" style="position:fixed;bottom:115px;right:10px;color:#00ff00;font-family:monospace;font-size:24px;font-weight:bold;z-index:9998">-- BPM</div>
+
+<script type="module" src="./src/index.ts"></script>
+</body>
+</html>
