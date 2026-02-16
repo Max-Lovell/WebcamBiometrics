@@ -2,13 +2,18 @@
 
 import WebEyeTrack from './WebEyeTrack';
 // import type { TrackingContext } from './types';
+// import { FACE_ROIS } from './utils/roiUtils';
+import { HeartRateEstimator } from '@webcambiometrics/vitals';
 import FaceLandmarkerClient from '../Core/FaceLandmarkerClient';
 import type { BiometricsResult } from "./types.ts";
+// import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
+// import * as tf from '@tensorflow/tfjs';
 
 let faceLandmarker: FaceLandmarkerClient;
 let tracker: WebEyeTrack;
 
 // Instantiate heart rate estimator in global scope
+const heartRateEstimator = new HeartRateEstimator();
 
 let status: 'initializing' | 'idle' | 'inference' | 'calib' = 'initializing';
 
@@ -49,6 +54,8 @@ self.onmessage = async (e: MessageEvent) => {
       try {
         // TODO: move from "Stop-and-Wait" protocol to run BlazeGaze in parallel if have previous face mesh waiting (worth it?)
           // TODO: Make next frame start processing immediately using single-slot buffer where next frame is overridden with most recently received one whilst processing
+
+        // TODO: extract frame height, width, and offscreen canvas or tensor ahead of time and pass down.
         context.trace.push({ step: 'facelandmarker_start', timestamp: performance.now() });
         const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
         context.trace.push({ step: 'facelandmarker_end', timestamp: performance.now() });
@@ -63,9 +70,16 @@ self.onmessage = async (e: MessageEvent) => {
         context.trace.push({ step: 'worker_end', timestamp: performance.now() });
 
         let summary;
-
+        let heartRateResult;
         if (isFaceDetected) {
+          heartRateResult = heartRateEstimator.processLandmarks(frame, context.videoTime, faceResult);
+
           const facialTransformationMatrix = faceResult.facialTransformationMatrixes[0].data;
+          // vitalsResult = foreheadEstimator.processFrame(
+          //     frame,
+          //     foreheadPoints,
+          //     context.videoTime
+          // );
           summary = {
             faceDetected: true,
             // TODO distance: a weighted split works best for now but figure out what is going wrong in other models
@@ -85,15 +99,24 @@ self.onmessage = async (e: MessageEvent) => {
             headPosition: [0, 0, 0],
           };
         }
+        // @ts-ignore
+        // const gpuPatchTensor = await tracker.getEyePatchGPU(frame, faceResult);
+        // const gpuPixels = await tf.browser.toPixels(gpuPatchTensor); // Download GPU pixels
+        // gpuPatchTensor.dispose();
+
+        // const newPatch = tracker.createNewRegion(frame, faceResult)
+        // const newPatchMetrics = tracker.createNewRegionWithMetrics(frame, faceResult)
 
         const finalResult: BiometricsResult = {
           faceLandmarker: faceResult,
           webEyeTrack: gazeResult,
           context: context,
-          summary: summary
+          summary: summary,
+          // gpuPixels: gpuPixels
+          debug: { heartRateResult}
         };
 
-        self.postMessage({ type: 'stepResult', result: finalResult });
+        self.postMessage({ type: 'stepResult', result: finalResult});
       } catch (err) {
         console.error(err);
         self.postMessage({ type: 'stepError', error: String(err) });
@@ -115,7 +138,7 @@ self.onmessage = async (e: MessageEvent) => {
       }
       break;
 
-    case 'adapt':
+    case 'adapt': // TODO: consider removing? check point of this - but note it's blocking (see 'click')
       // Handle manual calibration MAML adaptation
       status = 'calib';
 
