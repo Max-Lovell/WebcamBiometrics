@@ -35,6 +35,7 @@ export default class FaceLandmarkerClient {
         outputFacialTransformationMatrixes: true,
         runningMode: "VIDEO",
         numFaces: 1,
+        // minTrackingConfidence: 0.5 // note set this higher (.7) for a more stable solution, or decrease for smoother (.3)
       });
     } catch (e) {
       console.error("Failed to manually load MediaPipe WASM loader:", e);
