@@ -1,19 +1,16 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vite'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
-    optimizeDeps: {
-        // Tell Vite to exclude MediaPipe from pre-bundling - turns import() into a wrapper (self.import), causes error
-        exclude: ['@mediapipe/tasks-vision']
-    },
-    worker: {
-        // Ensure Workers are compiled as ES Modules, allows 'import()' to work natively.
-        format: 'es'
-    },
-    server: {
-        // Optional: sometimes helps with strict MIME type checking for WASM
-        headers: {
-            'Cross-Origin-Opener-Policy': 'same-origin',
-            'Cross-Origin-Embedder-Policy': 'credentialless',
+    resolve: {
+        alias: {
+            '@webcambiometrics/vitals': path.resolve(__dirname, '../vitals/src/index.ts')
         }
+    },
+    optimizeDeps: {
+        exclude: ['@webcambiometrics/vitals']
     }
-});
+})

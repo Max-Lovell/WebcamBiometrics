@@ -1,8 +1,17 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "composite": true,
     "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@webcambiometrics/vitals": ["../vitals/src/index.ts"]
+    },
     "types": ["vite/client", "node", "jest"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../vitals" }
+  ]
 }

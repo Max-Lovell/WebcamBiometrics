@@ -25,4 +25,9 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true
   },
+  "files": [],
+  "references": [
+    { "path": "./packages/vitals" },
+    { "path": "./packages/face" }
+  ]
 }
