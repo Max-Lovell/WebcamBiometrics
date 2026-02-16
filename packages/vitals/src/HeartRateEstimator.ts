@@ -1,7 +1,7 @@
 import type {VideoFrameData} from "./types";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import {calculatePOS} from "./signal/POS";
-import { BandpassFilter } from "./signal/BandpassFilter";
+import {BandpassFilter} from "./signal/BandpassFilter";
 import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FFT"
 
 export interface Point {
@@ -133,11 +133,12 @@ export class HeartRateEstimator {
         }
     }
 
-    private addPOSValue(region: string, hValue: number) {
-        const idx = this.posHRingBuffer.index;
-
-        // Overlap-add the mean-centered value TODO: need overall POS buffer added to here as well.
-        this.posHRingBuffer.regions[region][idx] += hValue;
+    private addPOSValue(region: string, hArray: Float32Array, windowStartIndex: number) {
+        const n = this.MAX_POS_SAMPLES;
+        for (let i = 0; i < hArray.length; i++) {
+            const idx = (windowStartIndex + i) % n;
+            this.posHRingBuffer.regions[region][idx] += hArray[i];
+        }
     }
 
     private advancePOSBuffer() {
@@ -322,9 +323,11 @@ export class HeartRateEstimator {
                     const unrolled = this.getUnrolledSignal(region); // Puts circular buffer in order for POS
                     // TODO: interpolate each new value to 30FPS when it comes in and save to interpolated buffer.
                     const interpolated = this.interpolateRGB(unrolled, this.fps);
-                    const h = calculatePOS(interpolated.r, interpolated.g, interpolated.b);
-                    regionResults[region].posH = h;
-                    this.addPOSValue(region, h);
+                    const hArray = calculatePOS(interpolated.r, interpolated.g, interpolated.b);
+                    regionResults[region].posH = hArray[hArray.length - 1]; // latest value for display
+                    // Overlap-add: window covers the last MAX_RGB_SAMPLES frames worth of POS indices
+                    const windowStart = (this.posHRingBuffer.index - hArray.length + 1 + this.MAX_POS_SAMPLES) % this.MAX_POS_SAMPLES;
+                    this.addPOSValue(region, hArray, windowStart);
                     // pos(regionSamples[region])
                     // regionResults[region].posH = calculatedPosH; // Placeholder for actual calculation
                 }
@@ -332,17 +335,22 @@ export class HeartRateEstimator {
         });
 
         // Calculate fused POS by averaging all valid region values TODO: abstract to own function and computer weighted average instead
-        const validRegionPOSValues = Object.values(regionResults)
-            .map(r => r.posH)
-            .filter((h): h is number => h !== null);
+        // Replace the existing fused H block with:
+        const regionKeys = Object.keys(regionResults);
+        const validRegions = regionKeys.filter(k => regionResults[k].posH !== null);
 
-        if (validRegionPOSValues.length > 0) {
-            const fusedH = validRegionPOSValues.reduce((sum, h) => sum + h, 0) / validRegionPOSValues.length;
-            const filteredH = this.bandpassFilter.process(fusedH);
-            this.posHRingBuffer.h[this.posHRingBuffer.index] += filteredH;
+        if (validRegions.length > 0) {
+            // For the fused buffer, average the per-region buffers at the current index
+            // Since per-region overlap-add already happened, we can derive fused from regions
+            const idx = this.posHRingBuffer.index;
+            let fusedVal = 0;
+            for (const region of validRegions) {
+                fusedVal += this.posHRingBuffer.regions[region][idx];
+            }
+            fusedVal /= validRegions.length;
+            this.posHRingBuffer.h[idx] = this.bandpassFilter.process(fusedVal);
             this.advancePOSBuffer();
         }
-
         // TODO: abstract this and pre-allocate ordered buffer in constructor to avoid GC issues
         let bpm: number | null = null;
         let bpmConf: number = 0;

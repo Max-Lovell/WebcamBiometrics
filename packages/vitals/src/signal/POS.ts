@@ -20,7 +20,7 @@
  */
 
 // TODO: just pass the object into this function, and then loop through to cut down on duplication.
-export function calculatePOS(r: Float32Array, g: Float32Array, b: Float32Array): number {
+export function calculatePOS(r: Float32Array, g: Float32Array, b: Float32Array): Float32Array {
     const l = r.length;
 
     // Temporal normalization (Cn = C / mean(C))
@@ -57,9 +57,12 @@ export function calculatePOS(r: Float32Array, g: Float32Array, b: Float32Array):
         h[i] = S1[i] + alpha * S2[i];
     }
 
-    // Return the last value, mean-centered (for step 8: overlap-adding)
+    // Return h array for overlap adding in main script TODO: consider this being part of a class containing POS array.
     const hMean = mean(h);
-    return h[l - 1] - hMean;
+    for (let i = 0; i < l; i++) {
+        h[i] -= hMean;
+    }
+    return h;
 }
 
 /**
