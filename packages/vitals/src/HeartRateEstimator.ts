@@ -401,6 +401,8 @@ export class HeartRateEstimator {
         unrolled: { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array }, // TODO: make interface.
         targetFps: number
     ): { r: Float32Array, g: Float32Array, b: Float32Array, times: Float64Array } {
+        // TODO: Note number of interpolated samples changes based on actual frame rate as timespan changes.
+        //  should lock output MAX_RGB_SAMPLES (but that actually stretches each sample)?  or pass in actual calculated FPS?
         // Linear interpolation
         const { r, g, b, times } = unrolled;
 
