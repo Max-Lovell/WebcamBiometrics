@@ -1,7 +1,7 @@
 import type {VideoFrameData} from "./types";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import {calculatePOS} from "./signal/POS";
-import {BandpassFilter} from "./signal/BandpassFilter";
+import { BandpassFilter } from "./signal/BandpassFilter";
 import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FFT"
 
 export interface Point {
@@ -23,8 +23,7 @@ interface RGBBuffer { // TODO: should this hold interpolated or raw values?
 interface POSHBuffer {
     index: number;
     ready: boolean; // min buffer length reached
-    h: Float32Array; // fused H over all regions
-    regions: Record<string, Float32Array>; // Per-region H
+    regions: Record<string, Float32Array>; // Per-region overlap-added H
 }
 
 export interface HeartRateResult {
@@ -66,14 +65,12 @@ export class HeartRateEstimator {
     private MAX_POS_SAMPLES: number = 300; // ~10 seconds at 30fps
     private posHRingBuffer: POSHBuffer;
 
-    private bandpassFilter: BandpassFilter;
     private hanningWindow: Float32Array;
 
     constructor(landmarkerROIs?: LandmarkerROIs, fps: number = 30) {
         // TODO: MAX_POS_SAMPLES *X this needs to be lowerable for anything involving sports etc, as reduces reactivity for change in HR for a better FFT fit
         this.fps = fps;
-        this.MAX_POS_SAMPLES = fps*15 // 10 seconds of POS samples for FFT signal to be calculated
-        this.bandpassFilter = BandpassFilter.fromBPM(42, 240, this.fps);
+        this.MAX_POS_SAMPLES = fps*15 // 15 seconds of POS samples for FFT signal
         this.hanningWindow = hanningWindow(this.MAX_POS_SAMPLES); // Cache Hanning Window
 
         this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
@@ -100,11 +97,10 @@ export class HeartRateEstimator {
             regions: regionRgbBuffers
         }
 
-        // Make POS samples array
+        // Instantiate POS overlap-add buffer
         this.posHRingBuffer = {
             index: 0,
             ready: false,
-            h: new Float32Array(this.MAX_POS_SAMPLES),
             regions: regionPOSBuffers
         }
     }
@@ -324,44 +320,51 @@ export class HeartRateEstimator {
                     // TODO: interpolate each new value to 30FPS when it comes in and save to interpolated buffer.
                     const interpolated = this.interpolateRGB(unrolled, this.fps);
                     const hArray = calculatePOS(interpolated.r, interpolated.g, interpolated.b);
-                    regionResults[region].posH = hArray[hArray.length - 1]; // latest value for display
-                    // Overlap-add: window covers the last MAX_RGB_SAMPLES frames worth of POS indices
+                    regionResults[region].posH = hArray[hArray.length - 1]; // Latest value for display
+
+                    // Overlap-add: this window covers the last hArray.length frames of POS buffer
                     const windowStart = (this.posHRingBuffer.index - hArray.length + 1 + this.MAX_POS_SAMPLES) % this.MAX_POS_SAMPLES;
                     this.addPOSValue(region, hArray, windowStart);
-                    // pos(regionSamples[region])
-                    // regionResults[region].posH = calculatedPosH; // Placeholder for actual calculation
                 }
             }
         });
 
-        // Calculate fused POS by averaging all valid region values TODO: abstract to own function and computer weighted average instead
-        // Replace the existing fused H block with:
-        const regionKeys = Object.keys(regionResults);
-        const validRegions = regionKeys.filter(k => regionResults[k].posH !== null);
-
-        if (validRegions.length > 0) {
-            // For the fused buffer, average the per-region buffers at the current index
-            // Since per-region overlap-add already happened, we can derive fused from regions
-            const idx = this.posHRingBuffer.index;
-            let fusedVal = 0;
-            for (const region of validRegions) {
-                fusedVal += this.posHRingBuffer.regions[region][idx];
-            }
-            fusedVal /= validRegions.length;
-            this.posHRingBuffer.h[idx] = this.bandpassFilter.process(fusedVal);
+        // Advance POS buffer if any regions produced data
+        const validRegionKeys = Object.keys(regionResults).filter(k => regionResults[k].posH !== null);
+        if (validRegionKeys.length > 0) {
             this.advancePOSBuffer();
         }
-        // TODO: abstract this and pre-allocate ordered buffer in constructor to avoid GC issues
+
+        // Deferred BPM estimation: fuse per-region buffers, bandpass, FFT
         let bpm: number | null = null;
         let bpmConf: number = 0;
-        if(this.posHRingBuffer.ready) {
+        if (this.posHRingBuffer.ready) {
             const n = this.MAX_POS_SAMPLES;
-            const start = this.posHRingBuffer.index; // oldest sample is at current index (just got overwritten)
+            const start = this.posHRingBuffer.index; // oldest sample is at current index
+
+            // Fuse per-region overlap-added signals by averaging, then unroll into order
             const ordered = new Float32Array(n);
+            const regionKeys = Object.keys(this.posHRingBuffer.regions);
+            const numRegions = regionKeys.length;
+
             for (let i = 0; i < n; i++) {
-                ordered[i] = this.posHRingBuffer.h[(start + i) % n];
+                const idx = (start + i) % n;
+                let sum = 0;
+                for (const region of regionKeys) {
+                    sum += this.posHRingBuffer.regions[region][idx];
+                }
+                ordered[i] = sum / numRegions;
             }
-            const spectrum = computeSpectrum(ordered, this.fps, this.hanningWindow);
+
+            // Bandpass filter the full fused signal
+            // Reset filter state for clean batch processing
+            const batchFilter = BandpassFilter.fromBPM(42, 240, this.fps);
+            const filtered = new Float32Array(n);
+            for (let i = 0; i < n; i++) {
+                filtered[i] = batchFilter.process(ordered[i]);
+            }
+
+            const spectrum = computeSpectrum(filtered, this.fps, this.hanningWindow);
             const peak = findDominantFrequency(spectrum, 42, 240);
             if (peak) {
                 bpm = peak.frequencyBPM;
@@ -372,12 +375,16 @@ export class HeartRateEstimator {
         // Advance buffer index once after processing all regions
         this.advanceRGBBuffer();
 
-        // Return result with placeholders for BPM and overall POS
+        // Return result
+        const latestPosH = validRegionKeys.length > 0
+            ? validRegionKeys.reduce((sum, k) => sum + (regionResults[k].posH ?? 0), 0) / validRegionKeys.length
+            : null;
+
         return {
             timestamp: time,
-            posH: this.posHRingBuffer.h[this.posHRingBuffer.index],
-            bpm: bpm, // TODO: calculate BPM from POS signal via FFT
-            confidence: bpmConf, // TODO: improve confidence metric
+            posH: latestPosH,
+            bpm: bpm,
+            confidence: bpmConf,
             regions: regionResults
         };
     }
