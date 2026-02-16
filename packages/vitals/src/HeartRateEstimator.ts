@@ -55,7 +55,11 @@ export class HeartRateEstimator {
     // TODO note consider separate classes here for canvas, ROI, and buffers, to manage their own state
     private offscreenCanvas: OffscreenCanvas | null = null;
     private ctx: OffscreenCanvasRenderingContext2D | null = null;
-
+    private framesSinceBPM: number = 0;
+    private BPM_INTERVAL: number = 15; // recalculate every ~0.5s at 30fps
+    private lastBPM: number | null = null;
+    private lastConfidence: number = 0;
+    
     private fps: number = 30;
     private landmarkerROIs: LandmarkerROIs;
 
@@ -338,7 +342,11 @@ export class HeartRateEstimator {
         // Deferred BPM estimation: fuse per-region buffers, bandpass, FFT
         let bpm: number | null = null;
         let bpmConf: number = 0;
-        if (this.posHRingBuffer.ready) {
+        this.framesSinceBPM++;
+
+
+        if (this.posHRingBuffer.ready  && this.framesSinceBPM >= this.BPM_INTERVAL) {
+            this.framesSinceBPM = 0;
             const n = this.MAX_POS_SAMPLES;
             const start = this.posHRingBuffer.index; // oldest sample is at current index
 
@@ -367,8 +375,8 @@ export class HeartRateEstimator {
             const spectrum = computeSpectrum(filtered, this.fps, this.hanningWindow);
             const peak = findDominantFrequency(spectrum, 42, 240);
             if (peak) {
-                bpm = peak.frequencyBPM;
-                bpmConf = peak.snr;
+                this.lastBPM = peak.frequencyBPM;
+                this.lastConfidence = peak.snr;
             }
         }
 
@@ -383,8 +391,8 @@ export class HeartRateEstimator {
         return {
             timestamp: time,
             posH: latestPosH,
-            bpm: bpm,
-            confidence: bpmConf,
+            bpm: this.lastBPM,
+            confidence: this.lastConfidence,
             regions: regionResults
         };
     }
