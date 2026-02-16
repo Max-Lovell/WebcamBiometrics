@@ -44,6 +44,7 @@ export default class WebcamClient {
     }
 
     private async attemptStreamStart(): Promise<void> {
+        // TODO: record page/webcam sleep loss of focus
         if (!this.shouldBeRunning || this.isRunning) return;
 
         try {
@@ -51,14 +52,12 @@ export default class WebcamClient {
             if (this.stream) return;
 
             const constraints: MediaStreamConstraints = {
-                    // width: { ideal: 1920 },
-                    // height: { ideal: 1080 },
-                    // frameRate: { ideal: 60 },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    frameRate: { ideal: 60 },
                 // Note the higher constraints are good for extracting vitals later, but slower for eyetracking
+                // TODO: see for more options: https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints
                 video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 30 },
                     facingMode: "user"
                 },
                 audio: false
@@ -69,6 +68,7 @@ export default class WebcamClient {
 
             // Handle stream death (e.g. unplug/lid close)
             const track = this.stream.getVideoTracks()[0];
+            console.log({settings: track.getSettings(), constraints: track.getConstraints(), capabilities: track.getCapabilities()}) //see screenPixelRatio - not available in node??
             track.onended = () => {
                 console.warn("Camera stream ended unexpectedly.");
                 this.handleStreamLoss();
