@@ -81,6 +81,10 @@ export default class WebEyeTrackProxy {
 
     // Add mouse handler for re-calibration
     this.inputHandler = (e: PointerEvent) => {
+      // Note worker's step is async await - if click happens during 'step' we still process this
+        // tracker.handleClick() -> tracker.adapt() updates affineMatrix. tracker.step() would then have new affineMatrix already.
+
+
       // Prevent default browser zooming/scrolling behavior if necessary
       if (!e.isPrimary) return; // Optional: Ignore multi-touch secondary fingers
 
@@ -137,6 +141,7 @@ export default class WebEyeTrackProxy {
     console.warn('onGazeResults callback not set');
   }
 
+  // TODO: is this used anywhere or necessary?
   /**
    * Perform calibration adaptation
    * Sends calibration data to the worker for model fine-tuning

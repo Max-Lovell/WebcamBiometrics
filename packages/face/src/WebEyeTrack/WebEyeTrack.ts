@@ -14,7 +14,7 @@ import {
   faceReconstruction,
   getHeadVector,
   obtainEyePatch,
-  translateMatrix
+  translateMatrix,
 } from "./utils/mathUtils";
 import {KalmanFilter2D} from "./utils/filter";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
@@ -34,6 +34,7 @@ function generateSupport(
     faceOrigins3D: number[][],
     normPogs: number[][]
 ): { supportX: SupportX, supportY: tf.Tensor } {
+  // Convert JS objects into tensors - inputs for model learning/adaptation process
 
   // Implementation for generating support samples
   return tf.tidy(() => {
@@ -151,7 +152,7 @@ export default class WebEyeTrack {
 
   async initialize(modelPath?: string): Promise<void> {
     await this.blazeGaze.loadModel(modelPath);
-    await this.warmup();
+    await this.warmup(); //TODO - consider ditching this approach?
     this.loaded = true;
   }
 
@@ -160,6 +161,7 @@ export default class WebEyeTrack {
    * This compiles WebGL shaders and optimizes computation graphs before first real usage.
    */
   async warmup(): Promise<void> {
+    // TODO: check this is correct... maybe delete?
     const warmupStart = performance.now();
     // Warmup iterations match total buffer capacity to exercise all code paths
     const numWarmupIterations = this.maxCalibPoints + this.maxClickPoints;
@@ -368,6 +370,7 @@ export default class WebEyeTrack {
     }
   }
 
+
   computeFaceOrigin3D(frame: ImageData, normFaceLandmarks: Point[], faceLandmarks: Point[], faceRT: Matrix): number[] {
     // Re-estimate face width to stop wobble
     // const currentFaceWidth = estimateFaceWidth(faceLandmarks);
@@ -378,6 +381,7 @@ export default class WebEyeTrack {
     }
 
     // Perform 3D face reconstruction and determine the pose in 3d cm space
+    // Metric Solving - force 3D model into cm units and predict angle of gaze.
     const [_, metricFace] = faceReconstruction(
       this.perspectiveMatrix,
       normFaceLandmarks as [number, number][],
@@ -389,7 +393,8 @@ export default class WebEyeTrack {
       this.latestGazeResult?.faceOrigin3D?.[2] ?? 60
     );
 
-    return computeFaceOrigin3D(metricFace);
+    return computeFaceOrigin3D(metricFace); // Note this isnt recursion - calls the import from mathUtils.
+  }
   }
 
   prepareInput(frame: VideoFrameData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
@@ -397,7 +402,6 @@ export default class WebEyeTrack {
     let width: number;
     let height: number;
     let frameImageData: ImageData | ImageBitmap;
-// TODO: Should be visible, display, or coded width??
 
     if (frame instanceof ImageData) {
       // Legacy/Fallback path
@@ -407,7 +411,7 @@ export default class WebEyeTrack {
     } else {
       // VideoFrame or ImageBitmap (Worker path)
       if (frame instanceof VideoFrame) {
-        width = frame.displayWidth;
+        width = frame.displayWidth; // TODO: Should be visible, display, or coded width??
         height = frame.displayHeight;
       } else {
         // ImageBitmap
@@ -425,13 +429,16 @@ export default class WebEyeTrack {
 
     // If perspective matrix is not set, initialize it
     if (!this.perspectiveMatrixSet) {
+      // 4*4 projection matrix mapping camera coords to NDC (i.e. w,h -> -1,1). used by faceReconstruction to unproject.
       const aspectRatio = width / height;
-      this.perspectiveMatrix = createPerspectiveMatrix(aspectRatio);
+      // TODO: cleanup how many new matrices are created here to stop triggering GC? preallocate into single ImageData buffer using data.set()
+      this.perspectiveMatrix = createPerspectiveMatrix(aspectRatio); //
       this.perspectiveMatrixSet = true;
     }
 
     // If intrinsics matrix is not set, initialize it
     if (!this.intrinsicsMatrixSet) {
+      // Computer Vision matrix (K) describing internal properties of the camera (focal length/ optical center).
       this.intrinsicsMatrix = createIntrinsicsMatrix(width, height);
       this.intrinsicsMatrixSet = true;
     }
@@ -449,12 +456,16 @@ export default class WebEyeTrack {
     const faceRT = translateMatrix(result.facialTransformationMatrixes[0]);
 
     // First, extract the eye patch
+    // takes tilted/rotated face from camera and unwarps to aligned rectangular image of eyes
+    // TODO: see https://github.com/google-ai-edge/mediapipe/issues/3495
     const eyePatch = obtainEyePatch(
         frameImageData,
       landmarks2d,
     );
 
     // Second, compute the face origin in 3D space
+    // Uses 15cm face width to estimate angle of gaze/head
+    // specific coordinate xyz origin for gaze vector.
     const face_origin_3d = this.computeFaceOrigin3D(
         frameImageData,
       landmarks.map((l: NormalizedLandmark) => [l.x, l.y]),
@@ -463,6 +474,7 @@ export default class WebEyeTrack {
     )
 
     // Third, compute the head vector
+    // converts mediapipe rotation matrix to Euler angles and swaps/negates axes for different coordinate system
     const head_vector = getHeadVector(
       faceRT
     );
@@ -483,6 +495,7 @@ export default class WebEyeTrack {
     innerLR: number = 1e-5,    // Default: 1e-5 (matches Python webeyetrack.py:325)
     ptType: 'calib' | 'click' = 'calib'
   ) {
+    // TODO: reduce how many small objects, matrices, and tensors are created here. (e.g. in adapt, createPerspectiveMatrix and step)
 
     // Prune old clickstream data (calibration buffer is never pruned)
     this.pruneCalibData();
@@ -634,6 +647,8 @@ export default class WebEyeTrack {
   async step(frame: VideoFrameData, timestamp: number, result: FaceLandmarkerResult | null): Promise<WebEyeTrackResult> {
     const tic1 = performance.now();
     // result = null; // For testing purposes, we can set result to null to simulate no face detected
+    // TODO: move up to worker
+    // TODO: cleanup how many new matrices are created here to stop triggering GC? preallocate into single ImageData buffer using data.set()
     if (!result || !result.faceLandmarks || result.faceLandmarks.length === 0) {
       return {
         eyePatch: new ImageData(1, 1), // Placeholder for eye patch
@@ -691,6 +706,8 @@ export default class WebEyeTrack {
       const normalizedInputTensor = inputTensor.div(tf.scalar(255.0));
       const headVectorTensor = tf.tensor2d(headVector, [1, 3]);
       const faceOriginTensor = tf.tensor2d(faceOrigin3D, [1, 3]);
+      // Note blazeGaze predicts gaze location from the extracted eye patch
+      // Deals with ambiguity: faceLandmarker jitter, oval shaped iris, iris squashed by camera lens, etc
       let outputTensor = this.blazeGaze.predict(normalizedInputTensor, headVectorTensor, faceOriginTensor);
       // Defensive dispose - but probably handled by tidy()
       tf.dispose([inputTensor, normalizedInputTensor, headVectorTensor, faceOriginTensor]);

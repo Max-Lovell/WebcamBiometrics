@@ -54,27 +54,36 @@ export function applyAffineMatrix(A: tf.Tensor, V: tf.Tensor): tf.Tensor {
 /**
  * Estimates a 3x3 homography matrix from 4 point correspondences.
  */
+
 export function computeHomography(src: Point[], dst: Point[]): number[][] {
+    // maps points from face in video to the flat, normalized crop
+    // src = original 4 tilted corners, dst = 512*512 square
     if (src.length !== 4 || dst.length !== 4) {
         throw new Error('Need exactly 4 source and 4 destination points');
     }
 
     const A: number[][] = [];
 
+    // Map points from one square to another using linear equations to solve H
+    // Equations in the form Ah=0, h=vector of the 9 values of H, solve for 0
     for (let i = 0; i < 4; i++) {
         const [x, y] = src[i];
         const [u, v] = dst[i];
-
+        // for every x,y point in original, two rows.
+        // Formula derived from cross-product rule of vectors
         A.push([-x, -y, -1, 0, 0, 0, x * u, y * u, u]);
         A.push([0, 0, 0, -x, -y, -1, x * v, y * v, v]);
     }
 
     const A_mat = new Matrix(A);
+    // Singular Value Decomposition solution
+    // H corresponds to the right singular vector associated with the smallest singular value ("null space") of
     const svd = safeSVD(A_mat);
 
     // Last column of V (right-singular vectors) is the solution to Ah=0
     // const h = svd.V.getColumn(svd.V.columns - 1);
     const V = svd.rightSingularVectors;
+    // Extract Right Singular Vector and reshape back to 3*3 matrix
     const h = V.getColumn(V.columns - 1);
 
     const H = [
@@ -106,7 +115,7 @@ export function warpImageData(
     outWidth: number,
     outHeight: number
 ): ImageData {
-    // Invert the homography for backward mapping
+    // Invert the homography for backward mapping H^-1
     const Hinv = inverse(new Matrix(H)).to2DArray();
 
     const output = new ImageData(outWidth, outHeight);
@@ -116,9 +125,11 @@ export function warpImageData(
     const srcW = srcImage.width;
     const srcH = srcImage.height;
 
+
     for (let y = 0; y < outHeight; y++) {
         for (let x = 0; x < outWidth; x++) {
             // Map (x, y) in destination → (x', y') in source
+            // For every pixel in destination, find pixel in source image it corresponds to
             const denom = Hinv[2][0] * x + Hinv[2][1] * y + Hinv[2][2];
             const srcX = (Hinv[0][0] * x + Hinv[0][1] * y + Hinv[0][2]) / denom;
             const srcY = (Hinv[1][0] * x + Hinv[1][1] * y + Hinv[1][2]) / denom;
@@ -133,7 +144,7 @@ export function warpImageData(
 
             const srcIdx = (iy * srcW + ix) * 4;
             const dstIdx = (y * outWidth + x) * 4;
-
+            // Copy pixel colour over
             dst[dstIdx] = src[srcIdx];       // R
             dst[dstIdx + 1] = src[srcIdx + 1]; // G
             dst[dstIdx + 2] = src[srcIdx + 2]; // B
@@ -286,20 +297,24 @@ export function obtainEyePatch(
 
     // TODO: clean up extracted region:
         // fix eyes drifting down when head moved up, top black bar on clipping
-        // use more stable and less protruding landmarks
+        // use more stable and less protruding landmarks?
+        // eye corners? Upper Rigid Mask - Nasal Bridge / Glabella to Temples / Forehead then offset before extraction?
+
+    // Takes tilted/rotated face from camera and unwarps to aligned rectangular image of eyes
 
     // Prepare src and dst
+    // Note these are points from top eyebrows to bottom chin, nose centre for stability
     const center = faceLandmarks[4]; //suggested: 168 // original: 4
     const leftTop = faceLandmarks[103]; //105 // original: 103
-    const leftBottom = faceLandmarks[150]; //118 // original: 150
+    const leftBottom = faceLandmarks[150]; //118 // original: 150 bottom chin
     const rightTop = faceLandmarks[332]; //334 // original: 332
-    const rightBottom = faceLandmarks[379]; //347 // original: 379
+    const rightBottom = faceLandmarks[379]; //347 // original: 379 chin
 
     let srcPts: Point[] = [leftTop, leftBottom, rightBottom, rightTop];
 
-    // Apply radial padding
+    // Apply radial padding - take extracted region around non-moving landmarks. TODO: could we extract from more stable place?
     srcPts = srcPts.map(([x, y]) => {
-        const dx = x - center[0];
+        const dx = x - center[0]; // relative to center
         const dy = y - center[1];
         return [
             x + dx * facePaddingCoefs[0],
@@ -307,7 +322,7 @@ export function obtainEyePatch(
         ];
     });
 
-    const dstPts: Point[] = [
+    const dstPts: Point[] = [ // 4 corners of a perfect square
         [0, 0],
         [0, faceCropSize],
         [faceCropSize, faceCropSize],
@@ -315,15 +330,17 @@ export function obtainEyePatch(
     ];
 
     // Compute homography matrix
+    // maps points from entire face in video to the flat, normalized crop
     const H = computeHomography(srcPts, dstPts);
 
-    // Step 5: Warp the image
+    // Step 5: Warp the image to square
     const warped = warpImageData(frame, H, faceCropSize, faceCropSize);
 
     // Step 6: Apply the homography matrix to the facial landmarks
+    // transforms original landmarks to flattened image coordinates
     const warpedLandmarks = faceLandmarks.map(pt => applyHomography(H, pt));
 
-    // Step 7: Generate the crop of the eyes
+    // Step 7: Generate the crop of the eyes - use flattened facelandmarker to
     const top_eyes_patch = warpedLandmarks[151];
     const bottom_eyes_patch = warpedLandmarks[195];
 
@@ -341,6 +358,7 @@ export function obtainEyePatch(
         cropHeight = Math.max(1, warped.height - cropY);
     }
 
+    // Crop out strip containing eyes.
     const eye_patch = cropImageData(
         warped,
         0,
@@ -353,6 +371,7 @@ export function obtainEyePatch(
     // OPTIMIZATION: Using bilinear resize instead of homography for simple rectangular scaling
     // This is ~2x faster and matches the Python reference implementation (cv2.resize)
     // The previous homography approach was mathematically equivalent but computationally expensive
+    // resisze to 512*128 expected by CNN.
     const resizedEyePatch = resizeImageData(
         eye_patch,
         dstImgSize[0],
@@ -407,17 +426,23 @@ export function translateMatrix(
 }
 
 export function createPerspectiveMatrix(aspectRatio: number): Matrix {
+    // Creates 4*4 projection matrix,
+    // maps camera coordinates to Normalized Device Coordinates (NDC: cube from -1 to 1).
+    // used for faceReconstruction to un-project 2D landmarks back into 3D metric space.
+    // TODO: cleanup how many new matrices are created here to stop triggering GC? preallocate into single ImageData buffer using data.set()
+
     const kDegreesToRadians = Math.PI / 180.0;
 
     // Standard perspective projection matrix calculations
+    // VERTICAL_FOV_DEGREES = 60. f estimate.
     const f = 1.0 / Math.tan(kDegreesToRadians * VERTICAL_FOV_DEGREES / 2.0);
-    const denom = 1.0 / (NEAR - FAR);
+    const denom = 1.0 / (NEAR - FAR); // Maps depth so objects near=-1 vs far=100, so reconstruct depth
 
     // Create and populate the matrix
     const perspectiveMatrix = new Matrix(4, 4).fill(0);
-
-    perspectiveMatrix.set(0, 0, f / aspectRatio);
-    perspectiveMatrix.set(1, 1, f);
+    // X,Y here flattens the camera cone of vision into a square.
+    perspectiveMatrix.set(0, 0, f / aspectRatio); //X is scaled by f/aspectRatio
+    perspectiveMatrix.set(1, 1, f); // Y scaled by f
     perspectiveMatrix.set(2, 2, (NEAR + FAR) * denom);
     perspectiveMatrix.set(2, 3, -1.0);
     perspectiveMatrix.set(3, 2, 2.0 * FAR * NEAR * denom);
@@ -429,20 +454,24 @@ export function createIntrinsicsMatrix(
     width: number, height: number,
     fovX?: number // in degrees
 ): Matrix {
+    // Intrinsics Matrix is a computer Vision matrix (K) describing internal properties of the camera (focal length/ optical center)
+    // Maps 3D camera coordinates (X,Y,Z) to 2D image pixel coordinates (u, v)
+    // Note K is not really necessary for eye patch warp, but is for 3d head vector/face origin
     const w = width;
     const h = height;
 
+    // Camera center
     const cX = w / 2;
     const cY = h / 2;
 
+    // Estimate camera FOV - note fovX isn't passed in from tracker so f always = w (standard estimate)
     let fX: number, fY: number;
-
     if (fovX !== undefined) {
         const fovXRad = (fovX * Math.PI) / 180;
         fX = w / (2 * Math.tan(fovXRad / 2));
         fY = fX; // Assume square pixels
     } else {
-        fX = fY = w; // Fallback estimate
+        fX = fY = w; // Fallback estimate - note though VERTICAL_FOV_DEGREES=60 in perspectiveMat
     }
 
     // Construct the intrinsic matrix
@@ -464,7 +493,7 @@ function distance2D(p1: number[], p2: number[]): number {
 export function estimateFaceWidth(
     faceLandmarks: Point[],
 ): number {
-
+    // Estimate the size of the face by how many irises it is
     const irisDist: number[] = [];
 
     for (const side of ['left', 'right']) {
@@ -493,6 +522,8 @@ export function convertUvToXyz(
     v: number,
     zRelative: number
 ): [number, number, number] {
+    // Unprojects pixel back into the world
+
     // Step 1: Convert to Normalized Device Coordinates (NDC)
     const ndcX = 2 * u - 1;
     const ndcY = 1 - 2 * v;
@@ -506,13 +537,14 @@ export function convertUvToXyz(
     // Step 4: Multiply to get world point in homogeneous coords
     const worldHomogeneous = invPerspective.mmul(ndcPoint);
 
-    // Step 5: Dehomogenize
+    // Step 5: Dehomogenize - Divide resulting xy by w to get coordinates in camera space.
     const w = worldHomogeneous.get(3, 0);
     const x = worldHomogeneous.get(0, 0) / w;
     const y = worldHomogeneous.get(1, 0) / w;
     // const z = worldHomogeneous.get(2, 0) / w;
 
     // Step 6: Scale using the provided zRelative
+    // apply zRelative (depth in cm) to place the point at the correct distance from camera
     const xRelative = -x; // negated to match original convention
     const yRelative = y;
     // zRelative stays as-is (external input)
@@ -610,8 +642,11 @@ export function transform3DTo2D(
     point3D: [number, number, number],
     K: Matrix
 ): [number, number] {
+    // Flatten 3d point - multiply xyz by intrinsics matrix (k)
+
     const eps = 1e-6;
     const [x, y, z] = point3D;
+    // divide by z so xy smaller if further away and round to nearest pixel
 
     const projected = K.mmul(Matrix.columnVector([x, y, z])).to1DArray();
 
@@ -638,6 +673,7 @@ export function refineDepthByRadialMagnitude(
     oldZ: number,
     // alpha = 0.5
 ): number {
+    // Compare spread of points, if model is smaller than face, must be further away
     const numPts = finalProjectedPts.length;
 
     // Compute centroid of detected 2D
@@ -682,32 +718,42 @@ export function faceReconstruction(
     // PERFORMANCE OPTIMIZATION: Perspective matrix is constant across all 478 landmarks.
     // Computing inverse once instead of 478 times provides ~10-50x speedup for this
     // operation with zero impact on accuracy. See MATRIX_INVERSION_ANALYSIS.md for details.
-    const invPerspective = inverse(perspectiveMatrix);
 
+    // Model-Based Pose Solver - Uses cm face width to estimate depth and predict angle of gaze/head
+    // take flat 2D landmarks from camera, find where a physical ?cm-wide human face would have to be standing in 3D space to create that 2D image.
+    // Uses virtual "canonical" face and moves around until lines up with camera video.
+
+    // unproject 2D landmarks (u,v) into 3D using the inverse perspective matrix.
+    const invPerspective = inverse(perspectiveMatrix); // returns 3d mesh floating in space
     // Step 1: Convert UVZ to XYZ using pre-inverted matrix (OPTIMIZED)
     const relativeFaceMesh = faceLandmarks.map(([u, v]) => convertUvToXyzWithInverse(invPerspective, u, v, initialZGuess));
 
-    // Step 2: Center to nose (index 4 is assumed nose)
+    // Step 2: Center to nose (index 4 is assumed nose) - shift facemesh so nose is at (0,0,0)
     const nose = relativeFaceMesh[4];
     const centered = relativeFaceMesh.map(([x, y, z]) => [-(x - nose[0]), -(y - nose[1]), z - nose[2]]) as [number, number, number][];
 
-    // Step 3: Normalize by width
+    // Step 3: Normalize by width - measure width of mesh and force to faceWidthCm to get cm
     const left = centered[LEFTMOST_LANDMARK];
     const right = centered[RIGHTMOST_LANDMARK];
+    // Gets 3D distance between left/rightmost points of face mesh
     const euclideanDistance = Math.hypot(
         left[0] - right[0],
         left[1] - right[1],
         left[2] - right[2]
     );
+    // Make face 1 unit wide by dividing each coordinate by xyz, multiply by face width for cm
     const normalized = centered.map(([x, y, z]) => [x / euclideanDistance * faceWidthCm, y / euclideanDistance * faceWidthCm, z / euclideanDistance * faceWidthCm]) as [number, number, number][];
 
     // Step 4: Extract + invert MediaPipe face rotation, convert to euler, flip pitch/yaw, back to rotmat
-    const faceR = faceRT.subMatrix(0, 2, 0, 2);
-    let [pitch, yaw, roll] = matrixToEuler(faceR);
-    [pitch, yaw] = [-yaw, pitch];
-    const finalR = eulerToMatrix(pitch, yaw, roll);
+    // Invert the rotation matrix from MediaPipe
+    const faceR = faceRT.subMatrix(0, 2, 0, 2); // extact 3*3 rotation from mediapipe matrix
+    let [pitch, yaw, roll] = matrixToEuler(faceR); // Convert rotation to angles
+    [pitch, yaw] = [-yaw, pitch]; //coordinate swizzle - just flip to coordinates expected by tracker
+    // turn corrected angles back to rotation matrix
+    const finalR = eulerToMatrix(pitch, yaw, roll); // can be used to un-rotate face so it's looking straight ahead for the canonical model.
 
-    // Step 5: Derotate face
+    // Step 5: Derotate face - apply inverse rotation mat to mesh
+    // creates standardised 3D face mesh centered at the origin, scaled to Xcm wide, and looking straight ahead ('Canonical Face.')
     const canonical = normalized.map(p => multiplyVecByMat(p, finalR.transpose()));
 
     // Step 6: Scale from R columns
@@ -715,16 +761,20 @@ export function faceReconstruction(
     const faceS = scales.reduce((a, b) => a + b, 0) / 3;
 
     // Step 7: Initial transform
+    // First go - place at default distance initialZGuess
     const initTransform = Matrix.eye(4);
     initTransform.setSubMatrix(finalR.div(faceS), 0, 0);
     initTransform.set(0, 3, 0);
     initTransform.set(1, 3, 0);
     initTransform.set(2, 3, initialZGuess);
 
+    // project 60cm-away face back onto 2D screen
     const cameraPts3D = canonical.map(p => transform3DTo3D(p, initTransform));
     const canonicalProj2D = cameraPts3D.map(p => transform3DTo2D(p, intrinsicsMatrix));
-
+    // Check if centers don't match (e.g. virtual face is center, but user is in top-right corner).
     const detected2D = faceLandmarks.map(([x, y]) => [x * videoWidth, y * videoHeight]) as [number, number][];
+    // Align Centers (Procrustes Analysis) - get 2D shift needed to align the centers and convert that to a 3D shift
+    // so face is now in the right X/Y position, but the depth (Z) likely wrong
     const shift2D = partialProcrustesTranslation2D(canonicalProj2D, detected2D);
 
     const shift3D = imageShiftTo3D(shift2D, initialZGuess, intrinsicsMatrix);
@@ -734,12 +784,18 @@ export function faceReconstruction(
     finalTransform.set(2, 3, finalTransform.get(2, 3) + shift3D[2]);
     const firstFinalTransform = finalTransform.clone();
 
+    // Slide face back and forth along the Z-axis until it fits
+    // snaps X and Y to the image center, and zoom mask along Z-axis until mask size matches face on screen
     let newZ = initialZGuess;
     for (let i = 0; i < 10; i++) {
+        // Project the 3D model onto screen and compare to observed landmarks
         const projectedPts = canonical.map(p => transform3DTo2D(transform3DTo3D(p, finalTransform), intrinsicsMatrix));
+        // Compare spread of points, if model is smaller than face, must be further away
+        // calculate correction factor (delta) and moves the face along Z-axis
         newZ = refineDepthByRadialMagnitude(projectedPts, detected2D, finalTransform.get(2, 3));
         if (Math.abs(newZ - finalTransform.get(2, 3)) < 0.25) break;
-
+        // Perspective Correction: Crucially, apparent X/Y changes with z
+        // so recalculate X,Y so face stays aligned with pixels as it moves
         const newX = firstFinalTransform.get(0, 3) * (newZ / initialZGuess);
         const newY = firstFinalTransform.get(1, 3) * (newZ / initialZGuess);
 
@@ -755,6 +811,9 @@ export function faceReconstruction(
 export function computeFaceOrigin3D(
     metricFace: [number, number, number][],
 ): [number, number, number] {
+    // The Cyclopean Eye - center between eyes in 3d space.
+    // TODO: why not use nose bridge? guess slightly less accurate and eyes are a bit further back...
+    // Take the metric coordinates from faceReconstruction for corners of eyelid and average to find center of left/right eye, and middle of them.
     const computeMean = (indices: number[]): [number, number, number] => {
         const points = indices.map(idx => metricFace[idx]);
         const sum = points.reduce(
@@ -783,6 +842,8 @@ function multiplyVecByMat(v: [number, number, number], m: Matrix): [number, numb
 }
 
 export function matrixToEuler(matrix: Matrix, degrees: boolean = true): [number, number, number] {
+    // Extract human readable rotation angles for gaze model requirements
+
     if (matrix.rows !== 3 || matrix.columns !== 3) {
         throw new Error('Rotation matrix must be 3x3.');
     }
