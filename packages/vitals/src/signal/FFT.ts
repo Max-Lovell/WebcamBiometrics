@@ -328,6 +328,45 @@ export function findDominantFrequency(
 
     if (peakMag === 0) return null;
 
+    // ── Harmonic rejection ──
+    // The pulse waveform is not a pure sine — it has a sharp systolic peak
+    // and dicrotic notch, so the 2nd harmonic (2× true HR) can sometimes
+    // exceed the fundamental in magnitude. If we find a peak at frequency f,
+    // check if there's a plausible sub-harmonic at f/2. A real heartbeat at
+    // f/2 will produce a harmonic at f, but not vice versa, so we prefer
+    // the sub-harmonic when it has reasonable power.
+    const subHarmonicHz = (peakBin * frequencyResolution) / 2;
+    const subHarmonicMinHz = bpmToHz(minBPM);
+
+    if (subHarmonicHz >= subHarmonicMinHz) {
+        // Find the bin closest to f/2
+        const subBinCenter = subHarmonicHz / frequencyResolution;
+        // Search a small window around the expected sub-harmonic (±2 bins)
+        // to account for the fundamental not sitting exactly at 2× a bin center
+        const searchStart = Math.max(startBin, Math.floor(subBinCenter - 2));
+        const searchEnd = Math.min(endBin, Math.ceil(subBinCenter + 2));
+
+        let subPeakBin = searchStart;
+        let subPeakMag = magnitudes[searchStart];
+        for (let k = searchStart + 1; k <= searchEnd; k++) {
+            if (magnitudes[k] > subPeakMag) {
+                subPeakMag = magnitudes[k];
+                subPeakBin = k;
+            }
+        }
+
+        // Accept the sub-harmonic if it has at least 40% of the dominant peak's
+        // magnitude. This threshold is intentionally generous — if a sub-harmonic
+        // exists at all with meaningful power, it's almost certainly the true
+        // fundamental. The 2nd harmonic of a real pulse is typically 30-60% of
+        // the fundamental's power, so even a weakened fundamental should clear this.
+        const SUB_HARMONIC_THRESHOLD = 0.4;
+        if (subPeakMag >= peakMag * SUB_HARMONIC_THRESHOLD) {
+            peakBin = subPeakBin;
+            peakMag = subPeakMag;
+        }
+    }
+
     // Parabolic interpolation for sub-bin accuracy
     let interpolatedBin = peakBin;
 
