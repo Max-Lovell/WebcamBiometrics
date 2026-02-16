@@ -2,6 +2,7 @@ import type {VideoFrameData} from "./types";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import {calculatePOS} from "./signal/POS";
 import { BandpassFilter } from "./signal/BandpassFilter";
+import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FFT"
 
 export interface Point {
     x: number;
@@ -52,9 +53,11 @@ export const FACE_ROIS: LandmarkerROIs = {
 };
 
 export class HeartRateEstimator {
+    // TODO note consider separate classes here for canvas, ROI, and buffers, to manage their own state
     private offscreenCanvas: OffscreenCanvas | null = null;
     private ctx: OffscreenCanvasRenderingContext2D | null = null;
 
+    private fps: number = 30;
     private landmarkerROIs: LandmarkerROIs;
 
     private MAX_RGB_SAMPLES: number = 32;
@@ -64,9 +67,14 @@ export class HeartRateEstimator {
     private posHRingBuffer: POSHBuffer;
 
     private bandpassFilter: BandpassFilter;
+    private hanningWindow: Float32Array;
 
     constructor(landmarkerROIs?: LandmarkerROIs, fps: number = 30) {
-        this.bandpassFilter = BandpassFilter.fromBPM(42, 240, 30);
+        // TODO: MAX_POS_SAMPLES *X this needs to be lowerable for anything involving sports etc, as reduces reactivity for change in HR for a better FFT fit
+        this.fps = fps;
+        this.MAX_POS_SAMPLES = fps*15 // 10 seconds of POS samples for FFT signal to be calculated
+        this.bandpassFilter = BandpassFilter.fromBPM(42, 240, this.fps);
+        this.hanningWindow = hanningWindow(this.MAX_POS_SAMPLES); // Cache Hanning Window
 
         this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
 
@@ -93,7 +101,6 @@ export class HeartRateEstimator {
         }
 
         // Make POS samples array
-        this.MAX_POS_SAMPLES = fps*10 // 10 seconds of POS samples for FFT signal to be calculated
         this.posHRingBuffer = {
             index: 0,
             ready: false,
@@ -314,21 +321,17 @@ export class HeartRateEstimator {
                     // TODO: unrolled should save to global array rather than creating new ones.
                     const unrolled = this.getUnrolledSignal(region); // Puts circular buffer in order for POS
                     // TODO: interpolate each new value to 30FPS when it comes in and save to interpolated buffer.
-                    const interpolated = this.interpolateRGB(unrolled, 30);
+                    const interpolated = this.interpolateRGB(unrolled, this.fps);
                     const h = calculatePOS(interpolated.r, interpolated.g, interpolated.b);
-
-                    // CLAUDE LOOK HERE
                     regionResults[region].posH = h;
                     this.addPOSValue(region, h);
-
-                    // TODO: consider interpolate each time vs batch interpolation - doing batch interpolation here for ease.
                     // pos(regionSamples[region])
                     // regionResults[region].posH = calculatedPosH; // Placeholder for actual calculation
                 }
             }
         });
 
-        // Calculate fused POS by averaging all valid region values
+        // Calculate fused POS by averaging all valid region values TODO: abstract to own function and computer weighted average instead
         const validRegionPOSValues = Object.values(regionResults)
             .map(r => r.posH)
             .filter((h): h is number => h !== null);
@@ -340,6 +343,24 @@ export class HeartRateEstimator {
             this.advancePOSBuffer();
         }
 
+        // TODO: abstract this and pre-allocate ordered buffer in constructor to avoid GC issues
+        let bpm: number | null = null;
+        let bpmConf: number = 0;
+        if(this.posHRingBuffer.ready) {
+            const n = this.MAX_POS_SAMPLES;
+            const start = this.posHRingBuffer.index; // oldest sample is at current index (just got overwritten)
+            const ordered = new Float32Array(n);
+            for (let i = 0; i < n; i++) {
+                ordered[i] = this.posHRingBuffer.h[(start + i) % n];
+            }
+            const spectrum = computeSpectrum(ordered, this.fps, this.hanningWindow);
+            const peak = findDominantFrequency(spectrum, 42, 240);
+            if (peak) {
+                bpm = peak.frequencyBPM;
+                bpmConf = peak.snr;
+            }
+        }
+
         // Advance buffer index once after processing all regions
         this.advanceRGBBuffer();
 
@@ -347,8 +368,8 @@ export class HeartRateEstimator {
         return {
             timestamp: time,
             posH: this.posHRingBuffer.h[this.posHRingBuffer.index],
-            bpm: null, // TODO: calculate BPM from POS signal via FFT
-            confidence: 1.0, // TODO: calculate actual confidence metric
+            bpm: bpm, // TODO: calculate BPM from POS signal via FFT
+            confidence: bpmConf, // TODO: improve confidence metric
             regions: regionResults
         };
     }
@@ -406,6 +427,7 @@ export class HeartRateEstimator {
             }
         }
 
+        // TODO: consider interpolating to actual sample rate, rather than desired - not sure effects on later samples though?
         // console.log({times, interpTimes, inputFPS: targetFps,
         //     interpolatedFPS: Math.round(((interpTimes.length-1)/duration)*1000),
         //     actualFPS: Math.round((times.length/duration)*1000)})
