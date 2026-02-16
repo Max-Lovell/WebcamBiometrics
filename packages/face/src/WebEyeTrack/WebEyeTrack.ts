@@ -395,6 +395,54 @@ export default class WebEyeTrack {
 
     return computeFaceOrigin3D(metricFace); // Note this isnt recursion - calls the import from mathUtils.
   }
+
+  createNewRegion(frame: VideoFrameData, result: FaceLandmarkerResult) {
+    let width, height;
+    if (frame instanceof VideoFrame) {
+      width = frame.displayWidth;
+      height = frame.displayHeight;
+    } else {
+      width = frame.width;
+      height = frame.height;
+    }
+
+    // -- Get landmarks
+    const landmarks = result.faceLandmarks[0]
+    // right 34 (127?), left 264 (356). Move in
+    // TODO: don't center on noseBridge, but on midpoint between eyes
+
+    // Get midpoint between eyes
+    // 133, 362
+    landmarks[133] // right
+    landmarks[362] // left
+    const anchorLandmarks = [landmarks[168], landmarks[264], landmarks[34]]; // center, left, right - use object?
+    // {centre: landmarks[6], left: landmarks[264], right: landmarks[34]}
+    const normLandmarks: Point[] = anchorLandmarks.map((landmark: NormalizedLandmark) => {
+      return [
+        Math.round(landmark.x * width),
+        Math.round(landmark.y * height),
+        // landmark.z
+      ];
+    });
+
+    // -- Get distance
+    const dx = normLandmarks[1][0] - normLandmarks[2][0];
+    const dy = normLandmarks[1][1] - normLandmarks[2][1];
+    const pixelWidth = Math.round(Math.sqrt(dx * dx + dy * dy));
+
+    const regionSize = [512,128]
+    const aspectRatio = regionSize[0]/regionSize[1] // 512/128=4
+
+    const pixelHeight = Math.round(pixelWidth/aspectRatio)
+    const halfSrcBox = [pixelWidth/2, pixelHeight/2]
+
+    return [
+      [normLandmarks[0][0] - halfSrcBox[0], normLandmarks[0][1] - halfSrcBox[1]], // Top Left
+      [normLandmarks[0][0] - halfSrcBox[0], normLandmarks[0][1] + halfSrcBox[1]], // Bottom Left
+      [normLandmarks[0][0] + halfSrcBox[0], normLandmarks[0][1] + halfSrcBox[1]], // Bottom Right
+      [normLandmarks[0][0] + halfSrcBox[0], normLandmarks[0][1] - halfSrcBox[1]]  // Top Right
+    ]
+
   }
 
   prepareInput(frame: VideoFrameData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
