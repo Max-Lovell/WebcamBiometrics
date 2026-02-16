@@ -59,7 +59,7 @@ export class HeartRateEstimator {
     private BPM_INTERVAL: number = 15; // recalculate every ~0.5s at 30fps
     private lastBPM: number | null = null;
     private lastConfidence: number = 0;
-    
+
     private fps: number = 30;
     private landmarkerROIs: LandmarkerROIs;
 
@@ -366,7 +366,7 @@ export class HeartRateEstimator {
 
             // Bandpass filter the full fused signal
             // Reset filter state for clean batch processing
-            const batchFilter = BandpassFilter.fromBPM(42, 240, this.fps);
+            const batchFilter = BandpassFilter.fromBPM(45, 180, this.fps); // use 42–240 max probably
             const filtered = new Float32Array(n);
             for (let i = 0; i < n; i++) {
                 filtered[i] = batchFilter.process(ordered[i]);
