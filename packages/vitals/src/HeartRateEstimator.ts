@@ -4,6 +4,7 @@ import {calculatePOS} from "./signal/POS";
 import { BandpassFilter } from "./signal/BandpassFilter";
 import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FFT"
 import { MedianSmoother } from './signal/TemporalSmoothing';
+import { StreamingPeakDetector } from './signal/PeakDetector';
 
 export interface Point {
     x: number;
@@ -32,6 +33,7 @@ export interface HeartRateResult {
     posH: number | null
     bpm: number | null;
     confidence: number;
+    peakBPM: number | null;
     regions: Record<string, {
         polygon: Point[];
         averageRGB: { r: number, g: number, b: number } | null;
@@ -72,15 +74,15 @@ export class HeartRateEstimator {
     private posHRingBuffer: POSHBuffer;
 
     private hanningWindow: Float32Array;
+    private peakDetector: StreamingPeakDetector;
+    private lastPeakBPM: number | null = null;
 
     constructor(landmarkerROIs?: LandmarkerROIs, fps: number = 30) {
         // TODO: MAX_POS_SAMPLES *X this needs to be lowerable for anything involving sports etc, as reduces reactivity for change in HR for a better FFT fit
         this.fps = fps;
-        this.MAX_POS_SAMPLES = fps*15 // 15 seconds of POS samples for FFT signal
-        this.hanningWindow = hanningWindow(this.MAX_POS_SAMPLES); // Cache Hanning Window
-
         this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
 
+        this.MAX_POS_SAMPLES = fps*15 // 15 seconds of POS samples for FFT signal
         this.MAX_RGB_SAMPLES = Math.ceil(fps*1.6) // 1.6 from POS paper where l=20fps*1.6 = 32 frames window size, probably arbitrary?
 
         // Initialize region buffers
@@ -109,6 +111,14 @@ export class HeartRateEstimator {
             ready: false,
             regions: regionPOSBuffers
         }
+
+        // Cache Hanning Window
+        this.hanningWindow = hanningWindow(this.MAX_POS_SAMPLES);
+        this.peakDetector = new StreamingPeakDetector(
+            { sampleRate: this.fps, minBPM: 42, maxBPM: 240 },
+            15 // match MAX_POS_SAMPLES window: fps * 15
+        );
+
     }
 
     private addSample(region: string, sample: {r: number, g: number, b: number}, time: number) {
@@ -377,6 +387,11 @@ export class HeartRateEstimator {
                 this.lastBPM = this.bpmSmoother.update(peak.frequencyBPM);
                 this.lastConfidence = peak.snr;
             }
+
+            // Peak detector TODO: probably should be persistent filter, push per frame
+            const newSamples = filtered.subarray(filtered.length - this.BPM_INTERVAL);
+            this.peakDetector.pushBuffer(newSamples);
+            this.lastPeakBPM = this.peakDetector.estimate()?.bpm ?? this.lastPeakBPM;
         }
 
         // Advance buffer index once after processing all regions
@@ -391,6 +406,7 @@ export class HeartRateEstimator {
             timestamp: time,
             posH: latestPosH,
             bpm: this.lastBPM,
+            peakBPM: this.lastPeakBPM,
             confidence: this.lastConfidence,
             regions: regionResults
         };
@@ -473,5 +489,7 @@ export class HeartRateEstimator {
     // Hard reset (e.g. if tracking is lost or scene changes)
     reset() {
         this.bpmSmoother.reset();
+        this.bpmSmoother.reset();
+
     }
 }
