@@ -3,6 +3,7 @@ import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vi
 import {calculatePOS} from "./signal/POS";
 import { BandpassFilter } from "./signal/BandpassFilter";
 import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FFT"
+import { MedianSmoother } from './signal/TemporalSmoothing';
 
 export interface Point {
     x: number;
@@ -59,6 +60,7 @@ export class HeartRateEstimator {
     private BPM_INTERVAL: number = 15; // recalculate every ~0.5s at 30fps
     private lastBPM: number | null = null;
     private lastConfidence: number = 0;
+    private bpmSmoother = new MedianSmoother(5);
 
     private fps: number = 30;
     private landmarkerROIs: LandmarkerROIs;
@@ -341,7 +343,7 @@ export class HeartRateEstimator {
 
         // Deferred BPM estimation: fuse per-region buffers, bandpass, FFT
         this.framesSinceBPM++;
-        
+
         if (this.posHRingBuffer.ready  && this.framesSinceBPM >= this.BPM_INTERVAL) {
             this.framesSinceBPM = 0;
             const n = this.MAX_POS_SAMPLES;
@@ -372,7 +374,7 @@ export class HeartRateEstimator {
             const spectrum = computeSpectrum(filtered, this.fps, this.hanningWindow);
             const peak = findDominantFrequency(spectrum, 42, 240);
             if (peak) {
-                this.lastBPM = peak.frequencyBPM;
+                this.lastBPM = this.bpmSmoother.update(peak.frequencyBPM);
                 this.lastConfidence = peak.snr;
             }
         }
@@ -470,5 +472,6 @@ export class HeartRateEstimator {
     }
     // Hard reset (e.g. if tracking is lost or scene changes)
     reset() {
+        this.bpmSmoother.reset();
     }
 }
