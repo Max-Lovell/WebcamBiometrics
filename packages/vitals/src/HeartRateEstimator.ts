@@ -340,11 +340,8 @@ export class HeartRateEstimator {
         }
 
         // Deferred BPM estimation: fuse per-region buffers, bandpass, FFT
-        let bpm: number | null = null;
-        let bpmConf: number = 0;
         this.framesSinceBPM++;
-
-
+        
         if (this.posHRingBuffer.ready  && this.framesSinceBPM >= this.BPM_INTERVAL) {
             this.framesSinceBPM = 0;
             const n = this.MAX_POS_SAMPLES;
