@@ -268,22 +268,6 @@ export class HeartRateEstimator {
         };
     }
 
-    // TODO separate function to process given coordinates too, e.g. for doing finger-phone rPPG with no landmarks
-    // processFrame(frame: VideoFrameData, frameContext: TrackingContext, coordinates?: Point[]) {}
-
-    getRoiPixelCoordinates(frame: VideoFrameData, faceLandmarkerResult: FaceLandmarkerResult) {
-        const width = 'displayWidth' in frame ? frame.displayWidth : frame.width;
-        const height = 'displayHeight' in frame ? frame.displayHeight : frame.height;
-
-        const allLandmarks: NormalizedLandmark[] = faceLandmarkerResult.faceLandmarks[0]
-        return Object.values(this.landmarkerROIs).map(indices =>
-            indices.map(idx => ({
-                x: Math.floor(allLandmarks[idx].x * width),
-                y: Math.floor(allLandmarks[idx].y * height)
-            }))
-        );
-    }
-
     processLandmarks(frame: VideoFrameData, time: number, faceLandmarkerResult: FaceLandmarkerResult): HeartRateResult {
         // TODO: PLAN
         //  Optionally run skin detector, landmark occlusion detection
