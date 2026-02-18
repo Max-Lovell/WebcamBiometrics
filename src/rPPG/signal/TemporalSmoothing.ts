@@ -14,6 +14,8 @@
  * All implement the same BPMSmoother interface so they're interchangeable.
  */
 
+import { median } from '../utils/math.ts';
+
 // ─── Interface ──────────────────────────────────────────────────────────────
 
 export interface BPMSmoother {
@@ -150,17 +152,4 @@ export class CombinedSmoother implements BPMSmoother {
     isReady(): boolean {
         return this.median.isReady();
     }
-}
-
-// ─── Utility ────────────────────────────────────────────────────────────────
-
-/** Compute the median of a number array (non-destructive) */
-function median(values: number[]): number {
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-
-    if (sorted.length % 2 === 0) {
-        return (sorted[mid - 1] + sorted[mid]) / 2;
-    }
-    return sorted[mid];
 }

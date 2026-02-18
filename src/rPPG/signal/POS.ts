@@ -19,6 +19,8 @@
  * @returns Pulse signal value (mean-centered for overlap-adding)
  */
 
+import { mean, std } from '../utils/math.ts';
+
 // TODO: just pass the object into this function, and then loop through to cut down on duplication.
 export function calculatePOS(r: Float32Array, g: Float32Array, b: Float32Array): Float32Array {
     const l = r.length;
@@ -63,28 +65,4 @@ export function calculatePOS(r: Float32Array, g: Float32Array, b: Float32Array):
         h[i] -= hMean;
     }
     return h;
-}
-
-/**
- * Calculate mean of an array
- */
-function mean(arr: Float32Array): number {
-    let sum = 0;
-    for (let i = 0; i < arr.length; i++) {
-        sum += arr[i];
-    }
-    return sum / arr.length;
-}
-
-/**
- * Calculate standard deviation of an array
- */
-function std(arr: Float32Array): number {
-    const mu = mean(arr);
-    let sumSquaredDiff = 0;
-    for (let i = 0; i < arr.length; i++) {
-        const diff = arr[i] - mu;
-        sumSquaredDiff += diff * diff;
-    }
-    return Math.sqrt(sumSquaredDiff / arr.length);
 }

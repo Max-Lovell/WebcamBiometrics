@@ -24,6 +24,8 @@
  * Do NOT feed it raw POS output — it needs the bandpass to remove noise.
  */
 
+import { median } from '../utils/math.ts';
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface PeakDetectorResult {
@@ -166,7 +168,7 @@ export function detectBPMFromPeaks(
     }
 
     // Use median interval for robustness
-    const medianInterval = sortedMedian(intervals);
+    const medianInterval = median(intervals);
 
     // Convert interval in samples to BPM
     // interval_seconds = interval_samples / sampleRate
@@ -279,17 +281,6 @@ export class StreamingPeakDetector {
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
-
-/** Median of a number array (non-destructive) */
-function sortedMedian(values: number[]): number {
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    if (sorted.length % 2 === 0) {
-        return (sorted[mid - 1] + sorted[mid]) / 2;
-    }
-    return sorted[mid];
-}
-
 /**
  * Measure how consistent a set of inter-peak intervals are.
  *

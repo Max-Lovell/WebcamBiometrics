@@ -18,7 +18,7 @@
  *   - At N=512 or 1024 (typical for rPPG), performance is trivial (~0.1ms)
  */
 
-import { bpmToHz, hzToBpm } from './BandpassFilter.ts';
+import { bpmToHz, hzToBpm } from '../utils/math.ts';
 
 
 // ─── Windowing ───────────────────────────────────────────────────────────────

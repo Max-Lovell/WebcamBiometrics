@@ -23,17 +23,7 @@
  * https://www.w3.org/2011/audio/audio-eq-cookbook.html
  */
 
-// ─── Unit Conversions ────────────────────────────────────────────────────────
-
-/** Convert BPM to Hz. Useful for specifying filter cutoffs in heart-rate terms. */
-export function bpmToHz(bpm: number): number {
-    return bpm / 60;
-}
-
-/** Convert Hz to BPM. Useful for interpreting FFT frequency bins as heart rate. */
-export function hzToBpm(hz: number): number {
-    return hz * 60;
-}
+import { bpmToHz } from '../utils/math.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
