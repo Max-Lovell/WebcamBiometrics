@@ -1,10 +1,10 @@
-import type {VideoFrameData} from "./types";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
-import {calculatePOS} from "./signal/POS";
-import { BandpassFilter } from "./signal/BandpassFilter";
-import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FFT"
-import { MedianSmoother } from './signal/TemporalSmoothing';
-import { StreamingPeakDetector } from './signal/PeakDetector';
+import {calculatePOS} from "./signal/POS.ts";
+import { BandpassFilter } from "./signal/BandpassFilter.ts";
+import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FFT.ts"
+import { MedianSmoother } from './signal/TemporalSmoothing.ts';
+import { StreamingPeakDetector } from './signal/PeakDetector.ts';
+import type {VideoFrameData} from "../WebEyeTrack/types.ts";
 
 export interface Point {
     x: number;

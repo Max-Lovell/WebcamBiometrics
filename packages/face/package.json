@@ -11,8 +11,7 @@
     "@mediapipe/tasks-vision": "^0.10.32",
     "@tensorflow/tfjs": "^4.22.0",
     "mathjs": "^15.1.0",
-    "ml-matrix": "^6.12.1",
-    "@webcambiometrics/vitals": "file:../../"
+    "ml-matrix": "^6.12.1"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

@@ -2,4 +2,4 @@
 // export * from './signal/SlidingBuffer';
 // export * from './signal/POS';
 // export * from './signal/SignalProcessor';
-export * from './HeartRateEstimator';
+export * from '../../face/src/rPPG/HeartRateEstimator';

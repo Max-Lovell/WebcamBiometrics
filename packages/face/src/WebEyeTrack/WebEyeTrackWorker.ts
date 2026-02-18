@@ -3,7 +3,7 @@
 import WebEyeTrack from './WebEyeTrack';
 // import type { TrackingContext } from './types';
 // import { FACE_ROIS } from './utils/roiUtils';
-import { HeartRateEstimator } from '@webcambiometrics/vitals';
+import { HeartRateEstimator } from '../rPPG/HeartRateEstimator';
 import FaceLandmarkerClient from '../Core/FaceLandmarkerClient';
 import type { BiometricsResult } from "./types.ts";
 // import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
