@@ -1,5 +1,5 @@
-import WebcamClient from './Core/WebcamClient';
-import WebEyeTrackProxy from './WebEyeTrack/WebEyeTrackProxy';
+import WebcamClient from './Core/WebcamClient.ts';
+import WebEyeTrackProxy from './WebEyeTrack/WebEyeTrackProxy.ts';
 import type { BiometricsResult } from './WebEyeTrack';
 
 // After the imports, add a simple graph

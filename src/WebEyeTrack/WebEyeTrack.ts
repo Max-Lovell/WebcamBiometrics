@@ -1,8 +1,8 @@
 import * as tf from '@tensorflow/tfjs';
 import {Matrix} from 'ml-matrix';
 
-import type {Point, VideoFrameData, WebEyeTrackResult} from "./types";
-import BlazeGaze from "./BlazeGaze";
+import type {Point, VideoFrameData, WebEyeTrackResult} from "./types.ts";
+import BlazeGaze from "./BlazeGaze.ts";
 import {
   applyAffineMatrix,
   computeAffineMatrixML,
@@ -15,8 +15,8 @@ import {
   getHeadVector,
   obtainEyePatch,
   translateMatrix,
-} from "./utils/mathUtils";
-import {KalmanFilter2D} from "./utils/filter";
+} from "./utils/mathUtils.ts";
+import {KalmanFilter2D} from "./utils/filter.ts";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 
 // Reference

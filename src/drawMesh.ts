@@ -1,6 +1,6 @@
 import type { BiometricsResult } from './WebEyeTrack';
 import { FaceLandmarker, DrawingUtils, type NormalizedLandmark } from "@mediapipe/tasks-vision";
-import { FACE_ROIS } from './WebEyeTrack/utils/roiUtils';
+import { FACE_ROIS } from './WebEyeTrack/utils/roiUtils.ts';
 
 export function drawMesh(gaze_result: BiometricsResult, canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');

@@ -1,8 +1,8 @@
 import { ImageData } from 'canvas';
 global.ImageData = ImageData as any;
 
-import { computeHomography, applyHomography, warpImageData } from './mathUtils';
-import type { Point } from "../types";
+import { computeHomography, applyHomography, warpImageData } from './mathUtils.ts';
+import type { Point } from "../types.ts";
 
 function pointsAlmostEqual(p1: Point, p2: Point, epsilon: number = 1e-3) {
   return (

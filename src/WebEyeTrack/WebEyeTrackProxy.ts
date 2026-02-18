@@ -1,4 +1,4 @@
-import type {BiometricsResult, TrackingContext, VideoFrameData} from "./types";
+import type {BiometricsResult, TrackingContext, VideoFrameData} from "./types.ts";
 
 interface TrackerConfig {
   maxPoints?: number;

@@ -1,10 +1,10 @@
 // C.F. https://github.com/google-ai-edge/mediapipe/issues/5257
 
-import WebEyeTrack from './WebEyeTrack';
+import WebEyeTrack from './WebEyeTrack.ts';
 // import type { TrackingContext } from './types';
 // import { FACE_ROIS } from './utils/roiUtils';
-import { HeartRateEstimator } from '../rPPG/HeartRateEstimator';
-import FaceLandmarkerClient from '../Core/FaceLandmarkerClient';
+import { HeartRateEstimator } from '../rPPG/HeartRateEstimator.ts';
+import FaceLandmarkerClient from '../Core/FaceLandmarkerClient.ts';
 import type { BiometricsResult } from "./types.ts";
 // import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
 // import * as tf from '@tensorflow/tfjs';

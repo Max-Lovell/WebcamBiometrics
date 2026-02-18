@@ -1,8 +1,8 @@
 import { Matrix, inverse, solve} from 'ml-matrix';
 import type {Matrix as MediaPipeMatrix, NormalizedLandmark} from '@mediapipe/tasks-vision';
 import * as tf from '@tensorflow/tfjs';
-import type {Point} from '../types';
-import { safeSVD } from './safeSVD';
+import type {Point} from '../types.ts';
+import { safeSVD } from './safeSVD.ts';
 
 // Used to determine the width of the face
 const LEFTMOST_LANDMARK = 356

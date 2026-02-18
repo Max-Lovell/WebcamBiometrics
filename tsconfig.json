@@ -1,33 +1,25 @@
 {
   "compilerOptions": {
-    /* Context */
     "target": "ES2022",
     "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "skipLibCheck": true,
-
-    /*  Module Resolution (Vite/MediaPipe) */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-
-    /* Strictness */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-
-    /* Interop */
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "types": ["vite/client", "node", "jest"]
   },
-  "files": [],
-  "references": [
-    { "path": "./packages/vitals" },
-    { "path": "./packages/face" }
-  ]
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -1,7 +1,7 @@
 // packages/face/src/index.ts
 import WebcamClient from './Core/WebcamClient.ts';
-import WebEyeTrackProxy from './WebEyeTrack/WebEyeTrackProxy';
-import { drawMesh } from './drawMesh';
+import WebEyeTrackProxy from './WebEyeTrack/WebEyeTrackProxy.ts';
+import { drawMesh } from './drawMesh.ts';
 
 // --- 1. Setup Biometrics ---
 const client = new WebcamClient('webcam');
