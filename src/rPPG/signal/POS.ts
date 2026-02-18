@@ -5,64 +5,92 @@
  * See: https://pure.tue.nl/ws/files/31563684/TBME_00467_2016_R1_preprint.pdf
  */
 
-/**
- * Core POS algorithm on a window of RGB samples
- *
- * Steps from paper:
- * Temporal normalization: Cn = C / mean(C)
- * Projection: S = P · Cn where P = [[0, 1, -1], [-2, 1, 1]]
- * Tuning: h = S1 + (σ(S1)/σ(S2)) × S2
- *
- * @param r - Red channel values
- * @param g - Green channel values
- * @param b - Blue channel values
- * @returns Pulse signal value (mean-centered for overlap-adding)
- */
-
 import { mean, std } from '../utils/math.ts';
 
-// TODO: just pass the object into this function, and then loop through to cut down on duplication.
-export function calculatePOS(r: Float32Array, g: Float32Array, b: Float32Array): Float32Array {
-    const l = r.length;
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-    // Temporal normalization (Cn = C / mean(C))
-    const rMean = mean(r);
-    const gMean = mean(g);
-    const bMean = mean(b);
+/** Three-channel RGB signal of equal length. Used across the pipeline. */
+export interface RGBSignal {
+    r: Float32Array;
+    g: Float32Array;
+    b: Float32Array;
+}
 
-    const rNorm = new Float32Array(l);
-    const gNorm = new Float32Array(l);
-    const bNorm = new Float32Array(l);
+/** RGB signal with associated timestamps (e.g., after interpolation). */
+export interface TimedRGBSignal extends RGBSignal {
+    times: Float64Array;
+}
 
-    for (let i = 0; i < l; i++) {
-        rNorm[i] = r[i] / rMean;
-        gNorm[i] = g[i] / gMean;
-        bNorm[i] = b[i] / bMean;
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Channel keys for iteration — avoids duplicating per-channel logic. */
+const RGB_KEYS = ['r', 'g', 'b'] as const;
+
+/**
+ * Temporal normalization: divide each channel by its mean.
+ * Returns a new RGBSignal — does not mutate the input.
+ *
+ * Cn = C / mean(C) for each channel C ∈ {R, G, B}
+ */
+function temporalNormalize(rgb: RGBSignal): RGBSignal {
+    const length = rgb.r.length;
+    const result: Partial<Record<'r' | 'g' | 'b', Float32Array>> = {};
+
+    for (const key of RGB_KEYS) {
+        const channel = rgb[key];
+        const mu = mean(channel);
+        const norm = new Float32Array(length);
+        for (let i = 0; i < length; i++) {
+            norm[i] = channel[i] / mu;
+        }
+        result[key] = norm;
     }
 
-    // Projection
+    return result as RGBSignal;
+}
+
+// ─── Core Algorithm ─────────────────────────────────────────────────────────
+
+/**
+ * Core POS algorithm on a window of RGB samples.
+ *
+ * Steps from paper:
+ *   1. Temporal normalization: Cn = C / mean(C)
+ *   2. Projection: S = P · Cn where P = [[0, 1, -1], [-2, 1, 1]]
+ *   3. Tuning: h = S1 + (σ(S1)/σ(S2)) × S2
+ *   4. Mean-center h for overlap-adding
+ *
+ * @param rgb - RGB signal window (all channels must be the same length)
+ * @returns Pulse signal array (mean-centered for overlap-adding)
+ */
+export function calculatePOS(rgb: RGBSignal): Float32Array {
+    const l = rgb.r.length;
+
+    // 1. Temporal normalization
+    const { r: rN, g: gN, b: bN } = temporalNormalize(rgb);
+
+    // 2. Projection onto skin-orthogonal plane
     const S1 = new Float32Array(l);
     const S2 = new Float32Array(l);
 
     for (let i = 0; i < l; i++) {
-        S1[i] = gNorm[i] - bNorm[i]; // S1 = G - B, i.e. [0,1,-1] * RGB
-        S2[i] = (-2 * rNorm[i]) + gNorm[i] + bNorm[i]; // S2 = -2R + G + B, e.g. (-2,1,1)*RGB
+        S1[i] = gN[i] - bN[i];                    // [0, 1, -1] · RGB
+        S2[i] = -2 * rN[i] + gN[i] + bN[i];       // [-2, 1, 1] · RGB
     }
 
-    // Tuning
-    const stdS1 = std(S1);
-    const stdS2 = std(S2);
-    const alpha = stdS2 > 0 ? stdS1 / stdS2 : 0;
+    // 3. Tuning: combine projections weighted by their standard deviations
+    const alpha = std(S2) > 0 ? std(S1) / std(S2) : 0;
 
     const h = new Float32Array(l);
     for (let i = 0; i < l; i++) {
         h[i] = S1[i] + alpha * S2[i];
     }
 
-    // Return h array for overlap adding in main script TODO: consider this being part of a class containing POS array.
+    // 4. Mean-center for overlap-add
     const hMean = mean(h);
     for (let i = 0; i < l; i++) {
         h[i] -= hMean;
     }
+
     return h;
 }

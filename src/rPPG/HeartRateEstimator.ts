@@ -297,8 +297,7 @@ export class HeartRateEstimator {
                     posH: null
                 };
                 return;
-            }
-            // TODO: deal with obscured landmarks or ones out of frame - check what effect out of frame has?
+            }// TODO: deal with obscured landmarks or ones out of frame - check what effect out of frame has?
 
             const rgbData = this.getAverageRgb(frame, polygon);
 
@@ -319,7 +318,7 @@ export class HeartRateEstimator {
                     const unrolled = this.getUnrolledSignal(region); // Puts circular buffer in order for POS
                     // TODO: interpolate each new value to 30FPS when it comes in and save to interpolated buffer.
                     const interpolated = this.interpolateRGB(unrolled, this.fps);
-                    const hArray = calculatePOS(interpolated.r, interpolated.g, interpolated.b);
+                    const hArray = calculatePOS(interpolated);
                     regionResults[region].posH = hArray[hArray.length - 1]; // Latest value for display
 
                     // Overlap-add: this window covers the last hArray.length frames of POS buffer
