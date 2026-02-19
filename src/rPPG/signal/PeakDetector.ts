@@ -25,6 +25,7 @@
  */
 
 import { median } from '../utils/math.ts';
+import {DEFAULT_PIPELINE_CONFIG, type PipelineConfig} from './types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -44,19 +45,7 @@ export interface PeakDetectorResult {
     confidence: number;
 }
 
-export interface PeakDetectorConfig {
-    /** Sample rate in Hz (your interpolated FPS) */
-    sampleRate: number;
-
-    /** Minimum BPM to detect. Peaks closer together than this rate are allowed,
-     *  but the final BPM estimate won't go below this. Also used to set the
-     *  minimum peak distance. Default: 40 */
-    minBPM: number;
-
-    /** Maximum BPM to detect. Sets the minimum time between peaks.
-     *  Default: 200 */
-    maxBPM: number;
-
+export interface PeakDetectorConfig extends PipelineConfig {
     /** Amplitude threshold as a fraction of the signal's max amplitude.
      *  Peaks below this fraction of the maximum are ignored.
      *  0.0 = accept all local maxima, 1.0 = only the absolute maximum.
@@ -65,9 +54,7 @@ export interface PeakDetectorConfig {
 }
 
 const DEFAULT_CONFIG: PeakDetectorConfig = {
-    sampleRate: 30,
-    minBPM: 40,
-    maxBPM: 200,
+    ...DEFAULT_PIPELINE_CONFIG,
     amplitudeThreshold: 0.3,
 };
 

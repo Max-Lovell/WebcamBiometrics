@@ -13,7 +13,7 @@ let faceLandmarker: FaceLandmarkerClient;
 let tracker: WebEyeTrack;
 
 // Instantiate heart rate estimator in global scope
-const heartRateEstimator = new HeartRateEstimator();
+const heartRateEstimator = new HeartRateEstimator({ sampleRate: 25 });
 
 let status: 'initializing' | 'idle' | 'inference' | 'calib' = 'initializing';
 

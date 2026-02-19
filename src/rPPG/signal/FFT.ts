@@ -19,6 +19,7 @@
  */
 
 import { bpmToHz, hzToBpm } from '../utils/math.ts';
+import {DEFAULT_PIPELINE_CONFIG, type PipelineConfig} from "./types.ts";
 
 
 // ─── Windowing ───────────────────────────────────────────────────────────────
@@ -287,15 +288,14 @@ export interface PeakResult {
  *     f = (k + δ) * frequencyResolution
  *
  * @param spectrum - Output from computeSpectrum()
- * @param minBPM - Minimum heart rate to consider (default 42, matching bandpass)
- * @param maxBPM - Maximum heart rate to consider (default 240, matching bandpass)
+ * @param config - Partial<PipelineConfig>
  * @returns PeakResult with interpolated frequency and confidence, or null if no valid peak
  */
 export function findDominantFrequency(
     spectrum: SpectrumResult,
-    minBPM: number = 42,
-    maxBPM: number = 240
+    config: Partial<PipelineConfig> = {}
 ): PeakResult | null {
+    const { minBPM, maxBPM } = { ...DEFAULT_PIPELINE_CONFIG, ...config };
     const { magnitudes, frequencies, frequencyResolution } = spectrum;
 
     const minHz = bpmToHz(minBPM);

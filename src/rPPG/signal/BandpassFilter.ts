@@ -24,6 +24,7 @@
  */
 
 import { bpmToHz } from '../utils/math.ts';
+import {type PipelineConfig, DEFAULT_PIPELINE_CONFIG } from './types.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -230,7 +231,7 @@ export class BandpassFilter {
      * @param sampleRate - Sample rate in Hz (your camera FPS after interpolation)
      */
     constructor(
-        lowCutHz: number = 0.7,
+        lowCutHz: number = 0.7, // TODO: make these consistent across app
         highCutHz: number = 4.0,
         sampleRate: number = 30
     ) {
@@ -251,6 +252,11 @@ export class BandpassFilter {
      */
     static fromBPM(lowCutBPM: number, highCutBPM: number, sampleRate: number = 30): BandpassFilter {
         return new BandpassFilter(bpmToHz(lowCutBPM), bpmToHz(highCutBPM), sampleRate);
+    }
+
+    static fromPipelineConfig(config: Partial<PipelineConfig> = {}): BandpassFilter {
+        const cfg = { ...DEFAULT_PIPELINE_CONFIG, ...config };
+        return BandpassFilter.fromBPM(cfg.minBPM, cfg.maxBPM, cfg.sampleRate);
     }
 
     /** Process a single sample through both filter stages */

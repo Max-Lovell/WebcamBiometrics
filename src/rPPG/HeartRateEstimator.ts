@@ -5,6 +5,26 @@ import {computeSpectrum, findDominantFrequency, hanningWindow} from "./signal/FF
 import { MedianSmoother } from './signal/TemporalSmoothing.ts';
 import { StreamingPeakDetector } from './signal/PeakDetector.ts';
 import type {VideoFrameData} from "../WebEyeTrack/types.ts";
+import {DEFAULT_PIPELINE_CONFIG, type PipelineConfig} from "./signal/types.ts";
+
+export interface HeartRateEstimatorConfig extends PipelineConfig {
+    /** Frames between BPM recalculations. Default: 15 (~0.5s at 30fps) */
+    bpmInterval: number;
+    /** Seconds of POS signal to buffer for FFT. Default: 15 */
+    posWindowSeconds: number;
+    /** POS window size multiplier (from paper: fps * 1.6). Default: 1.6 */
+    posWindowMultiplier: number;
+    /** Median smoother window size. Default: 5 */
+    smootherWindowSize: number;
+}
+
+const DEFAULT_HRE_CONFIG: HeartRateEstimatorConfig = {
+    ...DEFAULT_PIPELINE_CONFIG,
+    bpmInterval: 15,
+    posWindowSeconds: 15,
+    posWindowMultiplier: 1.6,
+    smootherWindowSize: 5,
+};
 
 export interface Point {
     x: number;
@@ -76,14 +96,16 @@ export class HeartRateEstimator {
     private hanningWindow: Float32Array;
     private peakDetector: StreamingPeakDetector;
     private lastPeakBPM: number | null = null;
+    private readonly config: HeartRateEstimatorConfig;
 
-    constructor(landmarkerROIs?: LandmarkerROIs, fps: number = 30) {
+    constructor(config: Partial<HeartRateEstimatorConfig> = {}, landmarkerROIs?: LandmarkerROIs) {
+        this.config = { ...DEFAULT_HRE_CONFIG, ...config };
         // TODO: MAX_POS_SAMPLES *X this needs to be lowerable for anything involving sports etc, as reduces reactivity for change in HR for a better FFT fit
-        this.fps = fps;
-        this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
+        const fps = this.config.sampleRate;
+        this.MAX_POS_SAMPLES = fps * this.config.posWindowSeconds;
+        this.MAX_RGB_SAMPLES = Math.ceil(fps * this.config.posWindowMultiplier);
 
-        this.MAX_POS_SAMPLES = fps*15 // 15 seconds of POS samples for FFT signal
-        this.MAX_RGB_SAMPLES = Math.ceil(fps*1.6) // 1.6 from POS paper where l=20fps*1.6 = 32 frames window size, probably arbitrary?
+        this.landmarkerROIs = landmarkerROIs ?? FACE_ROIS;
 
         // Initialize region buffers
         const regionRgbBuffers: RGBBuffer['regions'] = {};
@@ -114,9 +136,10 @@ export class HeartRateEstimator {
 
         // Cache Hanning Window
         this.hanningWindow = hanningWindow(this.MAX_POS_SAMPLES);
+        this.bpmSmoother = new MedianSmoother(this.config.smootherWindowSize);
         this.peakDetector = new StreamingPeakDetector(
-            { sampleRate: this.fps, minBPM: 42, maxBPM: 240 },
-            15 // match MAX_POS_SAMPLES window: fps * 15
+            this.config,  // PipelineConfig fields pass through directly
+            this.config.posWindowSeconds
         );
 
     }
@@ -365,7 +388,7 @@ export class HeartRateEstimator {
             }
 
             const spectrum = computeSpectrum(filtered, this.fps, this.hanningWindow);
-            const peak = findDominantFrequency(spectrum, 42, 240);
+            const peak = findDominantFrequency(spectrum, this.config);
             if (peak) {
                 this.lastBPM = this.bpmSmoother.update(peak.frequencyBPM);
                 this.lastConfidence = peak.snr;
