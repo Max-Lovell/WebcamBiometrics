@@ -1,7 +1,12 @@
 import type {Matrix, FaceLandmarkerResult} from "@mediapipe/tasks-vision";
-import type { RGBSample } from "@webcambiometrics/vitals";
 
 // export type Point = [number, number];
+export interface RGBSample {
+  r: number;
+  g: number;
+  b: number;
+}
+
 export type Point = number[];
 
 export type VideoFrameData = VideoFrame | ImageData | ImageBitmap;
