@@ -158,11 +158,10 @@ export class PulseProcessor {
     private readonly signalCapacity: number;
 
     // Pre-allocated work arrays
-    // Interpolated - sized with headroom for FPS variation TODO: no need to allow for FPS variation.
+    // Interpolated RGB — exactly rgbCapacity samples on a fixed grid
     private readonly interpR: Float32Array;
     private readonly interpG: Float32Array;
     private readonly interpB: Float32Array;
-    private readonly interpTimes: Float64Array;
     // Fused POS overlap-add buffer — H arrays averaged across regions before overlap-adding here
     private readonly fusedPosBuffer: Float32Array;
     private fusedPosIndex: number = 0;
@@ -202,12 +201,10 @@ export class PulseProcessor {
         // Filtered signal ring buffer — same capacity as POS signal buffer
         this.filteredBuffer = new FloatRingBuffer(this.signalCapacity);
 
-        // Interpolation work arrays
-        const interpMax = this.rgbCapacity * 2;
-        this.interpR = new Float32Array(interpMax);
-        this.interpG = new Float32Array(interpMax);
-        this.interpB = new Float32Array(interpMax);
-        this.interpTimes = new Float64Array(interpMax);
+        // Interpolation work arrays — exactly rgbCapacity, matching the fixed output grid
+        this.interpR = new Float32Array(this.rgbCapacity);
+        this.interpG = new Float32Array(this.rgbCapacity);
+        this.interpB = new Float32Array(this.rgbCapacity);
 
         // Batch filtering work arrays
         this.fusedWork = new Float32Array(this.signalCapacity);
@@ -392,68 +389,70 @@ export class PulseProcessor {
     // Process one region's RGB buffer through POS. Returns the H array for fusion.
     private processRegionPOS(state: RegionState): Float32Array {
         // Unroll circular RGB buffer into chronological order
-        const n = state.unrollRGB(this.timeBuffer);
-        // Interpolate to even spacing at target FPS
-        // TODO: NOTE start/end time different each from so are interpolated to slightly differently grid each time
-        //  Possibly affecting the H values coming out with noise
-        const interpLen = this.interpolateRGB(
+        state.unrollRGB(this.timeBuffer);
+
+        // Interpolate onto a fixed grid: rgbCapacity samples at sampleRate, anchored to most recent frame
+        this.interpolateRGB(
             state.unrollR, state.unrollG, state.unrollB, state.unrollTimes,
-            n,
-            this.config.sampleRate
+            this.rgbCapacity
         );
-        // Run POS to extract pulse signal window
-        // TODO: note this allocates a new Float32Array each time, might want to put into work buffer. Doesn't really matter though.
-        //   Also just consider moving POS algorithm here?
+
+        // Run POS on the uniformly-spaced signal — always exactly rgbCapacity samples
         return calculatePOS({
-            r: this.interpR.subarray(0, interpLen),
-            g: this.interpG.subarray(0, interpLen),
-            b: this.interpB.subarray(0, interpLen),
+            r: this.interpR,
+            g: this.interpG,
+            b: this.interpB,
         });
     }
 
-    // Linear interpolation of RGB channels to evenly spaced target sample rate.
-    // Writes into pre-allocated interpR/G/B/Times arrays and returns number of interpolated samples
+    // Interpolate raw RGB samples onto fixed FPS grid for POS window length of frames
+    // Starts at most recent frames timestamp and gets rgbCapacity samples at 1/sampleRate spacing
+    // Note this even spacing is only a requirement for FFT
     private interpolateRGB(
         r: Float32Array, g: Float32Array, b: Float32Array,
         times: Float64Array,
-        count: number,
-        targetFps: number
-    ): number {
-        // If not enough points to interpolate between
+        count: number
+    ): void {
+        // TODO: just note this interpolates to a different gird anchored on recent frame each time - could smear signal
+        //  Would be better to rely on a global grid
         if (count < 2) {
-            if (count === 1) {
-                this.interpR[0] = r[0];
-                this.interpG[0] = g[0];
-                this.interpB[0] = b[0];
-                this.interpTimes[0] = times[0];
+            // Not enough data to interpolate — fill with the single value or zeros
+            const val = count === 1;
+            for (let i = 0; i < this.rgbCapacity; i++) {
+                this.interpR[i] = val ? r[0] : 0;
+                this.interpG[i] = val ? g[0] : 0;
+                this.interpB[i] = val ? b[0] : 0;
             }
-            return count;
+            return;
         }
 
-        // TODO: need to make sure we don't accidentally add more values than the POS buffer is expecting - should only output l values? but might have fast frames too...
-        const startTime = times[0];
-        const endTime = times[count - 1];
-        const duration = endTime - startTime;
-        // Clamp to rgbCapacity (POS window size) - actual FPS differs from sampleRate
-        const targetSamples = Math.min(Math.ceil(duration * targetFps / 1000) + 1, this.rgbCapacity);
+        const n = this.rgbCapacity;
+        const dt = 1000 / this.config.sampleRate; // ms between grid samples
+        const endTime = times[count - 1];          // anchor: most recent frame
+        // console.log('Actual FPS: ', Math.floor(times.length / (endTime-times[0]) * 1000));
+        // Walk backwards through source data to interpolate onto the grid
+        let sourceIdx = count - 2; // start just before the last source sample
 
-        const dt = duration / (targetSamples - 1);
+        for (let i = n - 1; i >= 0; i--) {
+            const targetTime = endTime - (n - 1 - i) * dt;
 
-        let sourceIdx = 0;
-
-        for (let i = 0; i < targetSamples; i++) {
-            const targetTime = startTime + i * dt;
-            this.interpTimes[i] = targetTime;
-
-            while (sourceIdx < count - 1 && times[sourceIdx + 1] < targetTime) {
-                sourceIdx++;
+            // Advance source index backwards to bracket targetTime
+            while (sourceIdx > 0 && times[sourceIdx] > targetTime) {
+                sourceIdx--;
             }
 
-            if (sourceIdx >= count - 1) {
+            if (targetTime <= times[0]) {
+                // Before earliest sample — clamp to first value
+                this.interpR[i] = r[0];
+                this.interpG[i] = g[0];
+                this.interpB[i] = b[0];
+            } else if (targetTime >= times[count - 1]) {
+                // After latest sample — clamp to last value
                 this.interpR[i] = r[count - 1];
                 this.interpG[i] = g[count - 1];
                 this.interpB[i] = b[count - 1];
             } else {
+                // Linear interpolation between sourceIdx and sourceIdx+1
                 const t0 = times[sourceIdx];
                 const t1 = times[sourceIdx + 1];
                 const alpha = (targetTime - t0) / (t1 - t0);
@@ -463,7 +462,5 @@ export class PulseProcessor {
                 this.interpB[i] = b[sourceIdx] + alpha * (b[sourceIdx + 1] - b[sourceIdx]);
             }
         }
-
-        return targetSamples;
     }
 }
