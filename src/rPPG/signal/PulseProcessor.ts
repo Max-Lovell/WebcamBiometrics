@@ -228,9 +228,9 @@ export class PulseProcessor {
 
         // Fuse H arrays → overlap-add → advance write head → stream filter
         if (hArrays.length > 0) {
-            this.fuseAndOverlapAdd(hArrays);
+            const fusedPulse = this.fuseAndOverlapAdd(hArrays);
             this.advanceFusedIndex();
-            this.streamFilterPulse(regionPulses);
+            this.streamFilterSample(fusedPulse);
         }
 
         return {
@@ -345,8 +345,8 @@ export class PulseProcessor {
         return { regionPulses, hArrays };
     }
 
-    // Average H arrays element-wise and overlap-add into the fused signal buffer.
-    private fuseAndOverlapAdd(hArrays: Float32Array[]): void {
+    // Average H arrays element-wise and overlap-add into the fused signal buffer and return the most recent fused sample (for stream filtering)
+    private fuseAndOverlapAdd(hArrays: Float32Array[]): number {
         const hLen = hArrays[0].length;
 
         // Element-wise average into work array
@@ -368,6 +368,8 @@ export class PulseProcessor {
             const idx = (windowStart + i) % this.signalCapacity;
             this.fusedPosBuffer[idx] += this.hArrayWork[i];
         }
+
+        return this.hArrayWork[hLen - 1];
     }
 
     // Advance the fused POS write index, wrapping and marking ready on first fill.
@@ -379,15 +381,9 @@ export class PulseProcessor {
         }
     }
 
-    // Average valid region pulse values and feed through streaming bandpass filter.
-    private streamFilterPulse(regionPulses: Record<string, number | null>): void {
-        const validPulses = Object.values(regionPulses).filter(
-            (v): v is number => v !== null
-        );
-        if (validPulses.length === 0) return;
-
-        const fusedRaw = validPulses.reduce((s, v) => s + v, 0) / validPulses.length;
-        const filtered = this.streamFilter.process(fusedRaw);
+    // Feed a single fused pulse sample through the streaming bandpass filter
+    private streamFilterSample(sample: number): void {
+        const filtered = this.streamFilter.process(sample);
         this.filteredBuffer.push(filtered);
         this._latestPulse = filtered;
     }
