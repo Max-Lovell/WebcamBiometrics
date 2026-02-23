@@ -1,34 +1,16 @@
 /**
- * Bandpass Filter Module
- *
+ * Bandpass Filter
  * Implements a bandpass filter using cascaded biquad (2nd-order IIR) sections.
- * Designed for real-time rPPG signal processing at camera frame rates (~30fps).
- *
- * Architecture:
- *   BiquadFilter  — Single 2nd-order IIR section (the building block)
- *   BandpassFilter — Chains a high-pass + low-pass BiquadFilter
- *
- * Why Biquad IIR?
- *   At low sample rates (~30fps), FIR filters need many taps to achieve
- *   sharp cutoffs at low frequencies (0.7 Hz). Biquad IIR achieves this with
- *   just 5 coefficients and 4 values of state, making it ideal for real-time use.
- *
- * Why Butterworth?
- *   Maximally flat passband — no amplitude ripple within the heart rate range.
- *   We care about preserving relative amplitudes for FFT peak detection,
- *   not about phase linearity (which Butterworth doesn't guarantee, but
- *   we don't need it for frequency-domain BPM estimation).
- *
  * Reference: Robert Bristow-Johnson's Audio EQ Cookbook
  * https://www.w3.org/2011/audio/audio-eq-cookbook.html
  */
 
 import { bpmToHz } from '../utils/math.ts';
-import {type PipelineConfig, DEFAULT_PIPELINE_CONFIG } from './types.ts';
+import {type PipelineConfig, DEFAULT_PIPELINE_CONFIG } from '../types.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-/** The 5 biquad coefficients: 3 feedforward (b) + 2 feedback (a) */
+// 5 biquad coefficients: 3 feedforward (b) + 2 feedback (a)
 interface BiquadCoefficients {
     b0: number;
     b1: number;
@@ -38,7 +20,6 @@ interface BiquadCoefficients {
 }
 
 export type FilterType = 'lowpass' | 'highpass';
-
 
 // ─── Coefficient Computation ─────────────────────────────────────────────────
 
@@ -117,8 +98,7 @@ export function computeBiquadCoefficients(
 /**
  * A single biquad (2nd-order IIR) filter section.
  *
- * Implements the Direct Form I difference equation:
- *   y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
+ * Implements the Direct Form I difference equation: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
  *
  * State consists of just 4 numbers:
  *   x[n-1], x[n-2]  — previous two input samples
@@ -143,15 +123,7 @@ export class BiquadFilter {
         this.coefficients = computeBiquadCoefficients(cutoffHz, sampleRate, type);
     }
 
-    /**
-     * Process a single sample through the filter.
-     *
-     * This is designed to be called once per frame — feed it each new POS H value
-     * as it arrives and it returns the filtered value immediately. No buffering needed.
-     *
-     * @param x - Input sample (e.g., a POS H value)
-     * @returns Filtered output sample
-     */
+    // Process single sample through filter - once per frame on POS H value
     process(x: number): number {
         const { b0, b1, b2, a1, a2 } = this.coefficients;
 
@@ -170,14 +142,7 @@ export class BiquadFilter {
         return y;
     }
 
-    /**
-     * Process an entire buffer of samples.
-     * Useful for batch processing (e.g., filtering an already-collected signal
-     * for visualisation), but the filter state carries across calls either way.
-     *
-     * @param input - Array of input samples
-     * @returns New Float32Array of filtered samples
-     */
+    // Batch process whole buffer for visualising aleady collected signal
     processBuffer(input: Float32Array): Float32Array {
         const output = new Float32Array(input.length);
         for (let i = 0; i < input.length; i++) {
@@ -186,12 +151,7 @@ export class BiquadFilter {
         return output;
     }
 
-    /**
-     * Reset filter state to zero.
-     * Call this when tracking is lost, scene changes, or any discontinuity
-     * in the input signal — otherwise the filter's feedback terms will
-     * "remember" the old signal and cause a transient (ringing artifact).
-     */
+    // Reset filter - note old signal in buffer will cause 'ringing artefacts', so call when e.g. tracking lost.
     reset(): void {
         this.x1 = 0;
         this.x2 = 0;
@@ -223,33 +183,16 @@ export class BandpassFilter {
     private readonly highPass: BiquadFilter;
     private readonly lowPass: BiquadFilter;
 
-    /**
-     * @param lowCutHz  - High-pass cutoff in Hz. Frequencies below this are removed.
-     *                    Default 0.7 Hz = 42 BPM (covers bradycardia)
-     * @param highCutHz - Low-pass cutoff in Hz. Frequencies above this are removed.
-     *                    Default 4.0 Hz = 240 BPM (covers extreme tachycardia/exercise)
-     * @param sampleRate - Sample rate in Hz (your camera FPS after interpolation)
-     */
     constructor(
-        lowCutHz: number = 0.7, // TODO: make these consistent across app
-        highCutHz: number = 4.0,
-        sampleRate: number = 30
+        lowCutHz: number = 0.7, // Lower freq are removed. 0.7Hz = 42 BPM (covers bradycardia)
+        highCutHz: number = 4.0, // Higher freq are removed. 4.0 Hz = 240 BPM (covers extreme tachycardia/exercise)
+        sampleRate: number = 30 // camera FPS after interpolation
     ) {
         this.highPass = new BiquadFilter(lowCutHz, sampleRate, 'highpass');
         this.lowPass = new BiquadFilter(highCutHz, sampleRate, 'lowpass');
     }
 
-    /**
-     * Create a BandpassFilter with cutoffs specified in BPM.
-     *
-     * Usage:
-     *   const filter = BandpassFilter.fromBPM(42, 240, 30);
-     *   // equivalent to: new BandpassFilter(0.7, 4.0, 30)
-     *
-     * @param lowCutBPM  - High-pass cutoff in BPM (heart rates below this are removed)
-     * @param highCutBPM - Low-pass cutoff in BPM (heart rates above this are removed)
-     * @param sampleRate - Sample rate in Hz
-     */
+    // Create a BandpassFilter with cutoffs specified in BPM. fromBPM(42, 240, 30) = BandpassFilter(0.7, 4.0, 30)
     static fromBPM(lowCutBPM: number, highCutBPM: number, sampleRate: number = 30): BandpassFilter {
         return new BandpassFilter(bpmToHz(lowCutBPM), bpmToHz(highCutBPM), sampleRate);
     }
@@ -259,12 +202,12 @@ export class BandpassFilter {
         return BandpassFilter.fromBPM(cfg.minBPM, cfg.maxBPM, cfg.sampleRate);
     }
 
-    /** Process a single sample through both filter stages */
+    // Process a single sample through both filter stages
     process(sample: number): number {
         return this.lowPass.process(this.highPass.process(sample));
     }
 
-    /** Process an entire buffer through both filter stages */
+    // Process an entire buffer through both filter stages
     processBuffer(input: Float32Array): Float32Array {
         // We run high-pass first on the full buffer, then low-pass on the result.
         // This is equivalent to processing sample-by-sample through both,
@@ -273,7 +216,7 @@ export class BandpassFilter {
         return this.lowPass.processBuffer(afterHighPass);
     }
 
-    /** Reset both filter stages */
+    // Reset both filter stages
     reset(): void {
         this.highPass.reset();
         this.lowPass.reset();
