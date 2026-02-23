@@ -3,35 +3,31 @@
  * Based on: Wang et al. "Algorithmic Principles of Remote PPG"
  * IEEE Transactions on Biomedical Engineering, 2017
  * See: https://pure.tue.nl/ws/files/31563684/TBME_00467_2016_R1_preprint.pdf
+ *
+ * TODO: could just move this to pulse processor for simplicity.
  */
 
 import { mean, std } from '../utils/math.ts';
-
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-/** Three-channel RGB signal of equal length. Used across the pipeline. */
+// Three-channel RGB signal of equal length. Used across the pipeline.
 export interface RGBSignal {
     r: Float32Array;
     g: Float32Array;
     b: Float32Array;
 }
 
-/** RGB signal with associated timestamps (e.g., after interpolation). */
+// RGB signal with associated timestamps (e.g., after interpolation)
 export interface TimedRGBSignal extends RGBSignal {
     times: Float64Array;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Channel keys for iteration — avoids duplicating per-channel logic. */
+// Channel keys for iteration — avoids duplicating per-channel logic. */
 const RGB_KEYS = ['r', 'g', 'b'] as const;
 
-/**
- * Temporal normalization: divide each channel by its mean.
- * Returns a new RGBSignal — does not mutate the input.
- *
- * Cn = C / mean(C) for each channel C ∈ {R, G, B}
- */
+// divide each channel by its mean. Returns a new RGBSignal — does not mutate the input.
 function temporalNormalize(rgb: RGBSignal): RGBSignal {
     const length = rgb.r.length;
     const result: Partial<Record<'r' | 'g' | 'b', Float32Array>> = {};

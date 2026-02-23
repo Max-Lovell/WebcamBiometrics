@@ -155,15 +155,14 @@ export class HeartRateMonitor {
         landmarks: FaceLandmarkerResult,
         time: number
     ): HeartRateResult {
-        // Tier 1: Extract RGB
+        // Extract RGB average from each region
         const roiResult = this.roi.extract(frame, landmarks);
-
-        // Tier 2: Process pulse signal
+        // Extract POS signal from each RGB Average
         const pulseFrame = this.pulse.pushFrame(roiResult, time);
+        // TODO: Bandpass filter the POS signal
 
-        // Tier 3: Estimate BPM
+        // Estimate BPM
         const raw: HeartRateResult['raw'] = {};
-
         // Peak estimation: feed raw fused POS sample
         if (pulseFrame.fusedSample !== null && this.peak) {
             const peakResult = this.peak.pushSample(pulseFrame.fusedSample);
