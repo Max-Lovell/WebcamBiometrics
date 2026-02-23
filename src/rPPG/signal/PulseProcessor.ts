@@ -392,6 +392,7 @@ export class PulseProcessor {
         state.unrollRGB(this.timeBuffer);
 
         // Interpolate onto a fixed grid: rgbCapacity samples at sampleRate, anchored to most recent frame
+        // TODO: interpolation required for bandpass filter or FFT but is problematic and could skip if not FFTing?
         this.interpolateRGB(
             state.unrollR, state.unrollG, state.unrollB, state.unrollTimes,
             this.rgbCapacity
@@ -399,9 +400,9 @@ export class PulseProcessor {
 
         // Run POS on the uniformly-spaced signal — always exactly rgbCapacity samples
         return calculatePOS({
-            r: this.interpR,
-            g: this.interpG,
-            b: this.interpB,
+            r: this.interpR, // state.unrollR
+            g: this.interpG, // state.unrollG
+            b: this.interpB, // state.unrollB
         });
     }
 
@@ -414,7 +415,8 @@ export class PulseProcessor {
         count: number
     ): void {
         // TODO: just note this interpolates to a different gird anchored on recent frame each time - could smear signal
-        //  Would be better to rely on a global grid
+        //  Would be better to rely on a global grid.
+        //  Consider skipping and not doing bandpass or FFT?
         if (count < 2) {
             // Not enough data to interpolate — fill with the single value or zeros
             const val = count === 1;
