@@ -1,19 +1,22 @@
 /**
  * Pulse Processor
- * Converts RGB samples into bandpass-filtered pulse signal for heart rate estimation.
- * Per-region RGBs stored in ring buffers, unrolled once full, interpolated, run through POS.
+ * Converts RGB samples into a fused pulse signal for heart rate estimation.
+ * Per-region RGBs stored in ring buffers, unrolled once full, run through POS.
  * Region H arrays are averaged then overlap-added into a single fused buffer for analysis.
- * Filtered signal either streamed per frame for peak estimator, or batch filtered for FFT.
+ * Estimation-agnostic — downstream consumers decide how to analyse the signal.
  * Owns all signal-processing state:
  *   - Per-region RGB ring buffers (short window for POS)
  *   - Fused POS overlap-add buffer (long window for analysis)
- *   - Streaming bandpass filter (persistent, one sample per frame)
- *   - Filtered signal ring buffer (for display + peak estimator)
  *   - Pre-allocated work arrays (no per-frame allocation)
+ *
+ *   TODO: Linear interpolation for Bandpass filter and FFT method only
+ *    Idea: Maintain reference to fused overlap added buffer start point and
+ *      optionally interpolate/predict RGB onto a unified FPS grid
+ *      so doesn't estimate to different timepoints each frame and cause smear.
+ *      But can't linearly interpolate to future points
  */
 
 import {Float64RingBuffer, FloatRingBuffer} from '../FloatRingBuffer';
-import {BandpassFilter} from './BandpassFilter';
 import {calculatePOS} from './POS';
 import {DEFAULT_PIPELINE_CONFIG, type RGB, type PipelineConfig} from '../types.ts';
 
@@ -40,9 +43,9 @@ export const DEFAULT_PULSE_CONFIG: PulseProcessorConfig = {
 
 export interface PulseFrame {
     // Result returned by pushFrame() once per frame
-    // Latest bandpass-filtered pulse value fused across regions - for displaying waveform
-    pulse: number | null;
-    // Per-region raw POS H values (before region fusion or bandpass filtering) - for per region visualisation
+    // Latest fused POS sample from overlap-add across regions (for streaming peak detection)
+    fusedSample: number | null;
+    // Per-region raw POS H values (before region fusion) - for per region visualisation
     regionPulses: Record<string, number | null>;
     // Whether the signal buffer has enough data for BPM estimation */
     signalReady: boolean;
@@ -146,35 +149,20 @@ export class PulseProcessor {
     // Shared timestamp ring buffer — per-region alignment handled by hold-last-value
     private readonly timeBuffer: Float64RingBuffer;
 
-    // Streaming filter
-    // TODO: batch vs streaming probably useless? But need to make sure the H array is overlap added for all regions.
-    // Persistent bandpass filter for streaming option - uses 1 fused sample per frame. Reset when signal lost
-    private readonly streamFilter: BandpassFilter;
-    // Buffer of filtered samples read by peak estimator for real-time waveform display.
-    private readonly filteredBuffer: FloatRingBuffer;
-
     // Derived constants
     private readonly rgbCapacity: number;
     private readonly signalCapacity: number;
 
-    // Pre-allocated work arrays
-    // Interpolated RGB — exactly rgbCapacity samples on a fixed grid
-    private readonly interpR: Float32Array;
-    private readonly interpG: Float32Array;
-    private readonly interpB: Float32Array;
-
     // Fuse the overlap added hArrays from each region
     private readonly hArrayWork: Float32Array; // Temp storage for accumulating H array average across regions
-    private _latestPulse: number | null = null; // Latest stream-filtered pulse value (null until enough data)
-    
+
     // Fused POS overlap-add buffer — H arrays averaged across regions and are overlap-added into this
     private readonly fusedPosBuffer: Float32Array;
     private fusedPosIndex: number = 0;
     private fusedPosReady: boolean = false;
 
-    // For bandpass filtering the fusedPosBuffer for FFT analysis
-    private readonly fusedWork: Float32Array; // Used by getBatchFilteredSignal() for unwrapping chronological fused raw in fusedPosBuffer signal
-    private readonly batchFilteredWork: Float32Array; // Used by getBatchFilteredSignal() for output of batch filtering fusedWork
+    // For unwrapping fusedPosBuffer into chronological order (used by getFusedSignal)
+    private readonly fusedWork: Float32Array;
 
 
     // Note Partial<> makes every property optional.
@@ -193,28 +181,10 @@ export class PulseProcessor {
         // Shared timestamp buffer
         this.timeBuffer = new Float64RingBuffer(this.rgbCapacity);
 
-        // Streaming bandpass filter (persistent across frames)
-        this.streamFilter = BandpassFilter.fromBPM(
-            this.config.minBPM,
-            this.config.maxBPM,
-            this.config.sampleRate
-        );
-
-        // Filtered signal ring buffer — same capacity as POS signal buffer
-        this.filteredBuffer = new FloatRingBuffer(this.signalCapacity);
-
-        // Interpolation work arrays — exactly rgbCapacity, matching the fixed output grid
-        this.interpR = new Float32Array(this.rgbCapacity);
-        this.interpG = new Float32Array(this.rgbCapacity);
-        this.interpB = new Float32Array(this.rgbCapacity);
-
-        // Batch filtering work arrays
-        this.fusedWork = new Float32Array(this.signalCapacity);
-        this.batchFilteredWork = new Float32Array(this.signalCapacity);
-
         // Fused POS buffer and H array work array
-        this.fusedPosBuffer = new Float32Array(this.signalCapacity);
+        this.fusedPosBuffer = new Float32Array(this.signalCapacity); // Stores overlap added POS samples
         this.hArrayWork = new Float32Array(this.rgbCapacity); // H array length <= rgbCapacity
+        this.fusedWork = new Float32Array(this.signalCapacity); // Unroll workspace for getFusedSignal()
     }
 
     // ─── Public API ────────────────────────────────────────────────────
@@ -225,56 +195,34 @@ export class PulseProcessor {
         // Per-region: ingest RGB, run POS, collect H arrays
         const { regionPulses, hArrays } = this.processRegions(rgbPerRegion);
 
-        // Fuse H arrays → overlap-add → advance write head → stream filter
+        // Fuse H arrays → overlap-add → advance write head
+        let fusedSample: number | null = null;
         if (hArrays.length > 0) {
-            const fusedPulse = this.fuseAndOverlapAdd(hArrays);
+            fusedSample = this.fuseAndOverlapAdd(hArrays);
             this.advanceFusedIndex();
-            this.streamFilterSample(fusedPulse);
         }
 
         return {
-            pulse: this._latestPulse,
+            fusedSample,
             regionPulses,
             signalReady: this.isSignalReady(),
         };
     }
 
-    // Filtered signal for peak-based BPM estimation. Samples are bandpass filtered as they arrive.
-    // output - Optional pre-allocated array (must be >= signalLength)
-    // returns filtered samples in chronological order, or null if not ready
-    getStreamFilteredSignal(output?: Float32Array): Float32Array | null {
-        if (!this.filteredBuffer.isFull) return null;
-
-        const out = output ?? new Float32Array(this.signalCapacity);
-        this.filteredBuffer.copyOrdered(out);
-        return out;
-    }
-
-    // Get a batch-filtered signal for FFT-based BPM estimation.
-    // Note filters from scratch each time. call infrequently (e.g., every ~0.5s).
-    getBatchFilteredSignal(): Float32Array | null {
+    // Get the full fused signal in chronological order (for FFT analysis).
+    // Returns null if the buffer hasn't filled once yet.
+    getFusedSignal(output?: Float32Array): Float32Array | null {
         if (!this.fusedPosReady) return null;
 
         const n = this.signalCapacity;
+        const out = output ?? this.fusedWork;
 
         // Unroll fused buffer into chronological order
         for (let i = 0; i < n; i++) {
-            const idx = (this.fusedPosIndex + i) % n;
-            this.fusedWork[i] = this.fusedPosBuffer[idx];
+            out[i] = this.fusedPosBuffer[(this.fusedPosIndex + i) % n];
         }
 
-        // Fresh bandpass filter (clean state, no transient bleed)
-        const batchFilter = BandpassFilter.fromBPM(
-            this.config.minBPM,
-            this.config.maxBPM,
-            this.config.sampleRate
-        );
-
-        for (let i = 0; i < n; i++) {
-            this.batchFilteredWork[i] = batchFilter.process(this.fusedWork[i]);
-        }
-
-        return this.batchFilteredWork;
+        return out;
     }
 
     // Whether the fused signal buffer has filled at least once
@@ -301,10 +249,6 @@ export class PulseProcessor {
         this.fusedPosBuffer.fill(0);
         this.fusedPosIndex = 0;
         this.fusedPosReady = false;
-        // reset streaming bandpass filter incase face lost so doesn't remember old signal TODO: do we want it to remember maybe?
-        this.streamFilter.reset();
-        this.filteredBuffer.reset();
-        this._latestPulse = null;
     }
 
     // ─── Pipeline Steps (called by pushFrame) ────────────────────────
@@ -380,91 +324,17 @@ export class PulseProcessor {
         }
     }
 
-    // Feed a single fused pulse sample through the streaming bandpass filter
-    private streamFilterSample(sample: number): void {
-        const filtered = this.streamFilter.process(sample);
-        this.filteredBuffer.push(filtered);
-        this._latestPulse = filtered;
-    }
-
     // ─── Internals ──────────────────────────────────────────────────────
     // Process one region's RGB buffer through POS. Returns the H array for fusion.
     private processRegionPOS(state: RegionState): Float32Array {
         // Unroll circular RGB buffer into chronological order
         state.unrollRGB(this.timeBuffer);
 
-        // Interpolate onto a fixed grid: rgbCapacity samples at sampleRate, anchored to most recent frame
-        // TODO: interpolation required for bandpass filter or FFT but is problematic and could skip if not FFTing?
-        this.interpolateRGB(
-            state.unrollR, state.unrollG, state.unrollB, state.unrollTimes,
-            this.rgbCapacity
-        );
-
-        // Run POS on the uniformly-spaced signal — always exactly rgbCapacity samples
+        // Run POS directly on raw samples — POS doesn't require uniform spacing
         return calculatePOS({
-            r: this.interpR, // state.unrollR
-            g: this.interpG, // state.unrollG
-            b: this.interpB, // state.unrollB
+            r: state.unrollR,
+            g: state.unrollG,
+            b: state.unrollB,
         });
-    }
-
-    // Interpolate raw RGB samples onto fixed FPS grid for POS window length of frames
-    // Starts at most recent frames timestamp and gets rgbCapacity samples at 1/sampleRate spacing
-    // Note this even spacing is only a requirement for FFT
-    private interpolateRGB(
-        r: Float32Array, g: Float32Array, b: Float32Array,
-        times: Float64Array,
-        count: number
-    ): void {
-        // TODO: just note this interpolates to a different gird anchored on recent frame each time - could smear signal
-        //  Would be better to rely on a global grid.
-        //  Consider skipping and not doing bandpass or FFT?
-        if (count < 2) {
-            // Not enough data to interpolate — fill with the single value or zeros
-            const val = count === 1;
-            for (let i = 0; i < this.rgbCapacity; i++) {
-                this.interpR[i] = val ? r[0] : 0;
-                this.interpG[i] = val ? g[0] : 0;
-                this.interpB[i] = val ? b[0] : 0;
-            }
-            return;
-        }
-
-        const n = this.rgbCapacity;
-        const dt = 1000 / this.config.sampleRate; // ms between grid samples
-        const endTime = times[count - 1];          // anchor: most recent frame
-        // console.log('Actual FPS: ', Math.floor(times.length / (endTime-times[0]) * 1000));
-        // Walk backwards through source data to interpolate onto the grid
-        let sourceIdx = count - 2; // start just before the last source sample
-
-        for (let i = n - 1; i >= 0; i--) {
-            const targetTime = endTime - (n - 1 - i) * dt;
-
-            // Advance source index backwards to bracket targetTime
-            while (sourceIdx > 0 && times[sourceIdx] > targetTime) {
-                sourceIdx--;
-            }
-
-            if (targetTime <= times[0]) {
-                // Before earliest sample — clamp to first value
-                this.interpR[i] = r[0];
-                this.interpG[i] = g[0];
-                this.interpB[i] = b[0];
-            } else if (targetTime >= times[count - 1]) {
-                // After latest sample — clamp to last value
-                this.interpR[i] = r[count - 1];
-                this.interpG[i] = g[count - 1];
-                this.interpB[i] = b[count - 1];
-            } else {
-                // Linear interpolation between sourceIdx and sourceIdx+1
-                const t0 = times[sourceIdx];
-                const t1 = times[sourceIdx + 1];
-                const alpha = (targetTime - t0) / (t1 - t0);
-
-                this.interpR[i] = r[sourceIdx] + alpha * (r[sourceIdx + 1] - r[sourceIdx]);
-                this.interpG[i] = g[sourceIdx] + alpha * (g[sourceIdx + 1] - g[sourceIdx]);
-                this.interpB[i] = b[sourceIdx] + alpha * (b[sourceIdx + 1] - b[sourceIdx]);
-            }
-        }
     }
 }
