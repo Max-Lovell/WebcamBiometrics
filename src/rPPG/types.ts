@@ -38,6 +38,6 @@ export interface PipelineConfig {
 
 export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
     sampleRate: 30,
-    minBPM: 42,
-    maxBPM: 240,
+    minBPM: 50,
+    maxBPM: 100,
 };
