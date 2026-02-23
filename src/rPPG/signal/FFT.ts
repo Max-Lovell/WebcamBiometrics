@@ -19,7 +19,7 @@
  */
 
 import { bpmToHz, hzToBpm } from '../utils/math.ts';
-import {DEFAULT_PIPELINE_CONFIG, type PipelineConfig} from "./types.ts";
+import {DEFAULT_PIPELINE_CONFIG, type PipelineConfig} from "../types.ts";
 
 
 // ─── Windowing ───────────────────────────────────────────────────────────────
