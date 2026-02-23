@@ -162,18 +162,20 @@ export class PulseProcessor {
     private readonly interpR: Float32Array;
     private readonly interpG: Float32Array;
     private readonly interpB: Float32Array;
-    // Fused POS overlap-add buffer — H arrays averaged across regions before overlap-adding here
+
+    // Fuse the overlap added hArrays from each region
+    private readonly hArrayWork: Float32Array; // Temp storage for accumulating H array average across regions
+    private _latestPulse: number | null = null; // Latest stream-filtered pulse value (null until enough data)
+    
+    // Fused POS overlap-add buffer — H arrays averaged across regions and are overlap-added into this
     private readonly fusedPosBuffer: Float32Array;
     private fusedPosIndex: number = 0;
     private fusedPosReady: boolean = false;
-    // Used by getBatchFilteredSignal() chronological fused raw signal
-    private readonly fusedWork: Float32Array;
-    // Used by getBatchFilteredSignal() for batch-filtered output
-    private readonly batchFilteredWork: Float32Array;
-    // Temp storage for accumulating H array average across regions
-    private readonly hArrayWork: Float32Array;
-    // Latest stream-filtered pulse value (null until enough data)
-    private _latestPulse: number | null = null;
+
+    // For bandpass filtering the fusedPosBuffer for FFT analysis
+    private readonly fusedWork: Float32Array; // Used by getBatchFilteredSignal() for unwrapping chronological fused raw in fusedPosBuffer signal
+    private readonly batchFilteredWork: Float32Array; // Used by getBatchFilteredSignal() for output of batch filtering fusedWork
+
 
     // Note Partial<> makes every property optional.
     constructor(regionNames: string[] = ['region'], config?: Partial<PulseProcessorConfig>) {
