@@ -97,7 +97,7 @@ class RegionState {
         this._consecutiveMisses = 0;
     }
 
-    //Push the last known RGB value to keep buffers aligned with timestamps. Returns false if never received a valid sample (nothing to hold).
+    // Push the last known RGB value to keep buffers aligned with timestamps. Returns false if never received a valid sample (nothing to hold).
     pushHeld(): boolean {
         if (!this.hasReceived) return false;
         this.rBuffer.push(this.lastR);
@@ -218,100 +218,19 @@ export class PulseProcessor {
         this.hArrayWork = new Float32Array(this.rgbCapacity); // H array length <= rgbCapacity
     }
 
-    // Public API --------
-    // POS estimate, and fuse per region results for each frame
-    // Note rgbPerRegion type is to easily accept the output from the ROI RGB averager code elsewhere.
+    // ─── Public API ────────────────────────────────────────────────────
+    // Process a single frame through the full pulse pipeline. Call once per frame.
     pushFrame(rgbPerRegion: Record<string, { rgb: RGB | null }>, time: number): PulseFrame {
-        const regionPulses: Record<string, number | null> = {};
-        let anyRegionProduced = false;
-
-        // Store timestamp (shared across regions)
         this.timeBuffer.push(time);
 
-        // Process each region, collecting H arrays for fusion
-        const hArrays: Float32Array[] = [];
+        // Per-region: ingest RGB, run POS, collect H arrays
+        const { regionPulses, hArrays } = this.processRegions(rgbPerRegion);
 
-        for (const [name, state] of Object.entries(this.regions)) {
-            const rgb = rgbPerRegion[name]?.rgb ?? null;
-
-            if (rgb) {
-                // Valid RGB — push and reset miss counter
-                state.pushRGB(rgb.r, rgb.g, rgb.b);
-            } else if (state.consecutiveMisses < this.config.maxConsecutiveMisses) {
-                // Missing RGB but below dropout threshold — hold last value to keep aligned
-                if (!state.pushHeld()) {
-                    // Never received any data for this region yet — nothing to hold
-                    regionPulses[name] = null;
-                    continue;
-                }
-            } else {
-                // Sustained dropout — exclude this region from fusion entirely
-                regionPulses[name] = null;
-                continue;
-            }
-
-            // If POS window full, run POS and collect H array
-            if (state.rgbReady) {
-                const hArray = this.processRegionPOS(state);
-                regionPulses[name] = hArray[hArray.length - 1];
-                hArrays.push(hArray);
-                anyRegionProduced = true;
-            } else {
-                regionPulses[name] = null;
-            }
-        }
-
-        // Average H arrays across valid regions and overlap-add into fused buffer
+        // Fuse H arrays → overlap-add → advance write head → stream filter
         if (hArrays.length > 0) {
-            // All H arrays should be the same length (same rgbCapacity, same interpolation target)
-            const hLen = hArrays[0].length;
-
-            // Average element-wise into work array
-            this.hArrayWork.fill(0);
-            for (const h of hArrays) {
-                for (let i = 0; i < hLen; i++) {
-                    this.hArrayWork[i] += h[i];
-                }
-            }
-            for (let i = 0; i < hLen; i++) {
-                this.hArrayWork[i] /= hArrays.length;
-            }
-
-            // Overlap-add averaged H into fused buffer
-            const windowStart = (
-                this.fusedPosIndex - hLen + 1 + this.signalCapacity
-            ) % this.signalCapacity;
-            const fusedH = this.hArrayWork.subarray(0, hLen);
-            for (let i = 0; i < hLen; i++) {
-                const idx = (windowStart + i) % this.signalCapacity;
-                this.fusedPosBuffer[idx] += fusedH[i];
-            }
-        }
-
-        // Advance fused POS index if any region produced data
-        if (anyRegionProduced) {
-            this.fusedPosIndex++;
-            if (this.fusedPosIndex >= this.signalCapacity) {
-                this.fusedPosIndex = 0;
-                this.fusedPosReady = true;
-            }
-        }
-
-        // Fuse regions → stream filter → store filtered sample
-        if (anyRegionProduced) {
-            const validPulses = Object.values(regionPulses).filter(
-                (v): v is number => v !== null
-            );
-
-            if (validPulses.length > 0) {
-                // Average raw POS values across valid regions
-                const fusedRaw = validPulses.reduce((s, v) => s + v, 0) / validPulses.length;
-
-                // Feed through persistent bandpass → one clean sample out
-                const filtered = this.streamFilter.process(fusedRaw);
-                this.filteredBuffer.push(filtered);
-                this._latestPulse = filtered;
-            }
+            this.fuseAndOverlapAdd(hArrays);
+            this.advanceFusedIndex();
+            this.streamFilterPulse(regionPulses);
         }
 
         return {
@@ -387,6 +306,90 @@ export class PulseProcessor {
         this.streamFilter.reset();
         this.filteredBuffer.reset();
         this._latestPulse = null;
+    }
+
+    // ─── Pipeline Steps (called by pushFrame) ────────────────────────
+
+    // Ingest RGB for each region, hold-last-value on dropout, run POS when ready.
+    private processRegions(rgbPerRegion: Record<string, { rgb: RGB | null }>): {
+        regionPulses: Record<string, number | null>;
+        hArrays: Float32Array[];
+    } {
+        const regionPulses: Record<string, number | null> = {};
+        const hArrays: Float32Array[] = [];
+
+        for (const [name, state] of Object.entries(this.regions)) {
+            const rgb = rgbPerRegion[name]?.rgb ?? null;
+
+            if (rgb) {
+                state.pushRGB(rgb.r, rgb.g, rgb.b);
+            } else if (state.consecutiveMisses < this.config.maxConsecutiveMisses) {
+                if (!state.pushHeld()) {
+                    regionPulses[name] = null;
+                    continue; // Never received data — nothing to hold
+                }
+            } else {
+                regionPulses[name] = null;
+                continue; // Sustained dropout — exclude from fusion
+            }
+
+            if (state.rgbReady) {
+                const hArray = this.processRegionPOS(state);
+                regionPulses[name] = hArray[hArray.length - 1];
+                hArrays.push(hArray);
+            } else {
+                regionPulses[name] = null;
+            }
+        }
+
+        return { regionPulses, hArrays };
+    }
+
+    // Average H arrays element-wise and overlap-add into the fused signal buffer.
+    private fuseAndOverlapAdd(hArrays: Float32Array[]): void {
+        const hLen = hArrays[0].length;
+
+        // Element-wise average into work array
+        this.hArrayWork.fill(0);
+        for (const h of hArrays) {
+            for (let i = 0; i < hLen; i++) {
+                this.hArrayWork[i] += h[i];
+            }
+        }
+        for (let i = 0; i < hLen; i++) {
+            this.hArrayWork[i] /= hArrays.length;
+        }
+
+        // Overlap-add into fused buffer
+        const windowStart = (
+            this.fusedPosIndex - hLen + 1 + this.signalCapacity
+        ) % this.signalCapacity;
+        for (let i = 0; i < hLen; i++) {
+            const idx = (windowStart + i) % this.signalCapacity;
+            this.fusedPosBuffer[idx] += this.hArrayWork[i];
+        }
+    }
+
+    // Advance the fused POS write index, wrapping and marking ready on first fill.
+    private advanceFusedIndex(): void {
+        this.fusedPosIndex++;
+        if (this.fusedPosIndex >= this.signalCapacity) {
+            this.fusedPosIndex = 0;
+            this.fusedPosReady = true;
+        }
+    }
+
+    // Average valid region pulse values and feed through streaming bandpass filter.
+    private streamFilterPulse(regionPulses: Record<string, number | null>): void {
+        const validPulses = Object.values(regionPulses).filter(
+            (v): v is number => v !== null
+        );
+        if (validPulses.length === 0) return;
+
+        const fusedRaw = validPulses.reduce((s, v) => s + v, 0) / validPulses.length;
+        const filtered = this.streamFilter.process(fusedRaw);
+        this.filteredBuffer.push(filtered);
+        this._latestPulse = filtered;
     }
 
     // ─── Internals ──────────────────────────────────────────────────────
