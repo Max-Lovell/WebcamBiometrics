@@ -434,11 +434,9 @@ export class PulseProcessor {
         const startTime = times[0];
         const endTime = times[count - 1];
         const duration = endTime - startTime;
+        // Clamp to rgbCapacity (POS window size) - actual FPS differs from sampleRate
+        const targetSamples = Math.min(Math.ceil(duration * targetFps / 1000) + 1, this.rgbCapacity);
 
-        const targetSamples = Math.min(
-            Math.ceil(duration * targetFps / 1000) + 1,
-            this.interpR.length
-        );
         const dt = duration / (targetSamples - 1);
 
         let sourceIdx = 0;
