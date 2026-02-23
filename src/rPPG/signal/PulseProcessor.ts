@@ -1,11 +1,12 @@
 /**
  * Pulse Processor
- * Converts RGB sample into bandpass-filtered pulse signal for heart rate estimation.
- * Per-region RGBs stored in ring buffers, unroll once full, interpolate, run POS, overlap add
- * Filtered signal either stream per frame for peak estimator, or batch filtered signal for FFT
+ * Converts RGB samples into bandpass-filtered pulse signal for heart rate estimation.
+ * Per-region RGBs stored in ring buffers, unrolled once full, interpolated, run through POS.
+ * Region H arrays are averaged then overlap-added into a single fused buffer for analysis.
+ * Filtered signal either streamed per frame for peak estimator, or batch filtered for FFT.
  * Owns all signal-processing state:
  *   - Per-region RGB ring buffers (short window for POS)
- *   - Per-region POS overlap-add buffers (long window for analysis)
+ *   - Fused POS overlap-add buffer (long window for analysis)
  *   - Streaming bandpass filter (persistent, one sample per frame)
  *   - Filtered signal ring buffer (for display + peak estimator)
  *   - Pre-allocated work arrays (no per-frame allocation)
@@ -44,7 +45,7 @@ export interface PulseFrame {
 }
 
 // ─── Per-Region State ───────────────────────────────────────────────────────
-// Internal state for single region's signal RGB and POS overlap-added values for MRC averaging later
+// Internal state for a single region's RGB ring buffers
 class RegionState {
     // Note time is handled separately as not a per-region stat. See FloatRingBuffer class
 
@@ -52,10 +53,6 @@ class RegionState {
     readonly rBuffer: FloatRingBuffer;
     readonly gBuffer: FloatRingBuffer;
     readonly bBuffer: FloatRingBuffer;
-    // POS overlap-add buffer - raw unfiltered pulse signal. Note not a ring buffer
-    readonly posBuffer: Float32Array;
-    posIndex: number = 0;
-    posReady: boolean = false;
 
     // Pre-allocated work arrays for putting the ring buffers in chronological order
     readonly unrollR: Float32Array;
@@ -63,15 +60,10 @@ class RegionState {
     readonly unrollB: Float32Array;
     readonly unrollTimes: Float64Array;
 
-    constructor(
-        rgbCapacity: number,    // POS window size (e.g., 1.6s = 48 at 30fps)
-        signalCapacity: number  // Long signal buffer (e.g., 450 at 30fps × 15s)
-    ) {
+    constructor(rgbCapacity: number) {
         this.rBuffer = new FloatRingBuffer(rgbCapacity);
         this.gBuffer = new FloatRingBuffer(rgbCapacity);
         this.bBuffer = new FloatRingBuffer(rgbCapacity);
-        // NOTE not a ring buffer, too fiddly with random location access.
-        this.posBuffer = new Float32Array(signalCapacity);
 
         this.unrollR = new Float32Array(rgbCapacity);
         this.unrollG = new Float32Array(rgbCapacity);
@@ -89,7 +81,7 @@ class RegionState {
         return this.rBuffer.isFull;
     }
 
-     // Unroll RGB ring buffers into chronological order using pre-allocated work arrays for interpolation/pos calculation
+    // Unroll RGB ring buffers into chronological order using pre-allocated work arrays for interpolation/pos calculation
     unrollRGB(times: Float64RingBuffer): number {
         const n = this.rBuffer.count;
         this.rBuffer.copyOrdered(this.unrollR);
@@ -99,31 +91,10 @@ class RegionState {
         return n;
     }
 
-    // Overlap-add a POS H array into the long-term signal buffer.
-    overlapAdd(hArray: Float32Array, windowStart: number): void {
-        const n = this.posBuffer.length;
-        for (let i = 0; i < hArray.length; i++) {
-            const idx = (windowStart + i) % n;
-            this.posBuffer[idx] += hArray[i];
-        }
-    }
-
-    advancePOS(): void {
-        // Remember not a ring buffer here, so index reset is fine.
-        this.posIndex++;
-        if (this.posIndex >= this.posBuffer.length) {
-            this.posIndex = 0;
-            this.posReady = true;
-        }
-    }
-
     reset(): void {
         this.rBuffer.reset();
         this.gBuffer.reset();
         this.bBuffer.reset();
-        this.posBuffer.fill(0);
-        this.posIndex = 0;
-        this.posReady = false;
     }
 }
 
@@ -131,8 +102,8 @@ class RegionState {
 export class PulseProcessor {
     private readonly config: PulseProcessorConfig;
 
-    // Per-region state (RGB buffers, POS buffers, work arrays)
-    private readonly regions: Record<string, RegionState> = {}; // Or could use Map<string, RegionState> = new Map();
+    // Per-region state (RGB ring buffers + work arrays)
+    private readonly regions: Record<string, RegionState> = {};
     // Shared timestamp ring buffer added to per frame not per region
     // TODO: switch to per-region timestamp incase a region doesn't have rgb data for a frame, so can be correctly interpolated.
     private readonly timeBuffer: Float64RingBuffer;
@@ -154,10 +125,16 @@ export class PulseProcessor {
     private readonly interpG: Float32Array;
     private readonly interpB: Float32Array;
     private readonly interpTimes: Float64Array;
+    // Fused POS overlap-add buffer — H arrays averaged across regions before overlap-adding
+    private readonly fusedPosBuffer: Float32Array;
+    private fusedPosIndex: number = 0;
+    private fusedPosReady: boolean = false;
     // Used by getBatchFilteredSignal() chronological fused raw signal
     private readonly fusedWork: Float32Array;
     // Used by getBatchFilteredSignal() for batch-filtered output
     private readonly batchFilteredWork: Float32Array;
+    // Temp storage for accumulating H array average across regions
+    private readonly hArrayWork: Float32Array;
     // Latest stream-filtered pulse value (null until enough data)
     private _latestPulse: number | null = null;
 
@@ -171,7 +148,7 @@ export class PulseProcessor {
 
         // Initialize per-region state
         for (const name of regionNames) {
-            this.regions[name] = new RegionState(this.rgbCapacity, this.signalCapacity)
+            this.regions[name] = new RegionState(this.rgbCapacity)
         }
 
         // Shared timestamp buffer
@@ -197,6 +174,10 @@ export class PulseProcessor {
         // Batch filtering work arrays
         this.fusedWork = new Float32Array(this.signalCapacity);
         this.batchFilteredWork = new Float32Array(this.signalCapacity);
+
+        // Fused POS buffer and H array work array
+        this.fusedPosBuffer = new Float32Array(this.signalCapacity);
+        this.hArrayWork = new Float32Array(this.rgbCapacity); // H array length <= rgbCapacity
     }
 
     // Public API --------
@@ -213,12 +194,16 @@ export class PulseProcessor {
         // Store timestamp (shared across regions)
         this.timeBuffer.push(time);
 
-        // Process each region
+        // Process each region, collecting H arrays for fusion
+        const hArrays: Float32Array[] = [];
+
         for (const [name, state] of Object.entries(this.regions)) {
             const rgb = rgbPerRegion[name]?.rgb ?? null;
 
-            if (!rgb) { // TODO: Note this leaves gaps in RGB misaligning it with timestamp data...
-                // TODO: state.pushRGB(NaN, NaN, NaN);??
+            if (!rgb) {
+                // TODO: Note this leaves gaps in RGB misaligning it with timestamp data, probably just persisting previously assigned value
+                //    maybe assign NaN, then ignore NaNs in interpolation function, and NaN in region H array, and factor that into averaging for fused estimate?
+                //    state.pushRGB(NaN, NaN, NaN);??
                 regionPulses[name] = null;
                 continue;
             }
@@ -228,17 +213,48 @@ export class PulseProcessor {
 
             // If POS window full, start processing
             if (state.rgbReady) {
-                regionPulses[name] = this.processRegionPOS(state);
+                const hArray = this.processRegionPOS(state);
+                regionPulses[name] = hArray[hArray.length - 1]; // store most recent sample
+                hArrays.push(hArray);
                 anyRegionProduced = true;
             } else {
                 regionPulses[name] = null;
             }
         }
 
-        // Advance POS buffer index if any region produced data
+        // Average H arrays across valid regions and overlap-add into fused buffer
+        if (hArrays.length > 0) {
+            // All H arrays should be the same length (same rgbCapacity, same interpolation target)
+            const hLen = hArrays[0].length;
+
+            // Average element-wise into work array
+            this.hArrayWork.fill(0);
+            for (const h of hArrays) {
+                for (let i = 0; i < hLen; i++) {
+                    this.hArrayWork[i] += h[i];
+                }
+            }
+            for (let i = 0; i < hLen; i++) {
+                this.hArrayWork[i] /= hArrays.length;
+            }
+
+            // Overlap-add averaged H into fused buffer
+            const windowStart = (
+                this.fusedPosIndex - hLen + 1 + this.signalCapacity
+            ) % this.signalCapacity;
+            const fusedH = this.hArrayWork.subarray(0, hLen);
+            for (let i = 0; i < hLen; i++) {
+                const idx = (windowStart + i) % this.signalCapacity;
+                this.fusedPosBuffer[idx] += fusedH[i];
+            }
+        }
+
+        // Advance fused POS index if any region produced data
         if (anyRegionProduced) {
-            for (const state of Object.values(this.regions)){
-                state.advancePOS();
+            this.fusedPosIndex++;
+            if (this.fusedPosIndex >= this.signalCapacity) {
+                this.fusedPosIndex = 0;
+                this.fusedPosReady = true;
             }
         }
 
@@ -280,23 +296,14 @@ export class PulseProcessor {
     // Get a batch-filtered signal for FFT-based BPM estimation.
     // Note filters from scratch each time. call infrequently (e.g., every ~0.5s).
     getBatchFilteredSignal(): Float32Array | null {
-        if (!this.isSignalReady()) return null;
+        if (!this.fusedPosReady) return null;
 
         const n = this.signalCapacity;
-        const regionStates = Object.values(this.regions);
-        const numRegions = regionStates.length;
 
-        // All regions share the same posIndex (advanced together)
-        const start = regionStates[0].posIndex;
-
-        // Fuse: average all regions' POS buffers, chronological
+        // Unroll fused buffer into chronological order
         for (let i = 0; i < n; i++) {
-            const idx = (start + i) % n;
-            let sum = 0;
-            for (const state of regionStates) {
-                sum += state.posBuffer[idx];
-            }
-            this.fusedWork[i] = sum / numRegions;
+            const idx = (this.fusedPosIndex + i) % n;
+            this.fusedWork[i] = this.fusedPosBuffer[idx];
         }
 
         // Fresh bandpass filter (clean state, no transient bleed)
@@ -313,12 +320,9 @@ export class PulseProcessor {
         return this.batchFilteredWork;
     }
 
-    // Whether the signal buffer has filled at least once
+    // Whether the fused signal buffer has filled at least once
     isSignalReady(): boolean {
-        for (const state of Object.values(this.regions)) {
-            if (state.posReady) return true;
-        }
-        return false;
+        return this.fusedPosReady;
     }
 
     // Length of the signal buffers
@@ -337,6 +341,9 @@ export class PulseProcessor {
         for (const state of Object.values(this.regions)) {
             state.reset();
         }
+        this.fusedPosBuffer.fill(0);
+        this.fusedPosIndex = 0;
+        this.fusedPosReady = false;
         // reset streaming bandpass filter incase face lost so doesn't remember old signal TODO: do we want it to remember maybe?
         this.streamFilter.reset();
         this.filteredBuffer.reset();
@@ -344,37 +351,30 @@ export class PulseProcessor {
     }
 
     // ─── Internals ──────────────────────────────────────────────────────
-    // Process one region's RGB buffer through the POS algorithm.
-    private processRegionPOS(state: RegionState): number {
+    // Process one region's RGB buffer through POS. Returns the H array for fusion.
+    private processRegionPOS(state: RegionState): Float32Array {
         // Unroll circular RGB buffer into chronological order
         const n = state.unrollRGB(this.timeBuffer);
         // Interpolate to even spacing at target FPS
+        // TODO: NOTE start/end time different each from so are interpolated to slightly differently grid each time
+        //  Possibly affecting the H values coming out with noise
         const interpLen = this.interpolateRGB(
             state.unrollR, state.unrollG, state.unrollB, state.unrollTimes,
             n,
             this.config.sampleRate
         );
-        //Run POS to extract pulse signal window
-        const hArray = calculatePOS({
+        // Run POS to extract pulse signal window
+        // TODO: note this allocates a new Float32Array each time, might want to put into work buffer. Doesn't really matter though.
+        //   Also just consider moving POS algorithm here?
+        return calculatePOS({
             r: this.interpR.subarray(0, interpLen),
             g: this.interpG.subarray(0, interpLen),
             b: this.interpB.subarray(0, interpLen),
         });
-
-        // Overlap-add into long-term buffer
-        // TODO: Double check this is getting the right index?
-        const windowStart = (
-            state.posIndex - hArray.length + 1 + this.signalCapacity
-        ) % this.signalCapacity;
-        state.overlapAdd(hArray, windowStart);
-
-        // TODO: make it so average before overlap adding on H fused array as well.
-        //  In future for MRC can keep per-region buffers and average them based on signal quality in each frame with proper fused overlap add.
-        return hArray[hArray.length - 1];
     }
 
     // Linear interpolation of RGB channels to evenly spaced target sample rate.
-      // Writes into pre-allocated interpR/G/B/Times arrays and returns number of interpolated samples
+    // Writes into pre-allocated interpR/G/B/Times arrays and returns number of interpolated samples
     private interpolateRGB(
         r: Float32Array, g: Float32Array, b: Float32Array,
         times: Float64Array,
@@ -392,6 +392,7 @@ export class PulseProcessor {
             return count;
         }
 
+        // TODO: need to make sure we don't accidentally add more values than the POS buffer is expecting - should only output l values? but might have fast frames too...
         const startTime = times[0];
         const endTime = times[count - 1];
         const duration = endTime - startTime;
