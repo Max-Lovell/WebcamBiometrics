@@ -25,12 +25,16 @@ export interface PulseProcessorConfig extends PipelineConfig {
     posWindowMultiplier: number; // From the POS paper: l = fps × 1.6 ≈ 32 frames at 20fps.
     // Seconds of POS output to buffer for later analysis - where overlap adding occurs
     signalWindowSeconds: number;
+    // Max consecutive missing frames before a region is excluded from fusion.
+    // Below this threshold, the last valid RGB is held to keep buffers aligned.
+    maxConsecutiveMisses: number;
 }
 
 export const DEFAULT_PULSE_CONFIG: PulseProcessorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
     posWindowMultiplier: 1.6, // From the POS paper: l = fps × 1.6 ≈ 32 frames at 20fps.
     signalWindowSeconds: 15,
+    maxConsecutiveMisses: 3,
 };
 
 
@@ -45,7 +49,9 @@ export interface PulseFrame {
 }
 
 // ─── Per-Region State ───────────────────────────────────────────────────────
-// Internal state for a single region's RGB ring buffers
+// Internal state for a single region's RGB ring buffers.
+// Handles missing frames via hold-last-value with a dropout counter —
+// if a region misses too many consecutive frames, it's excluded from fusion.
 class RegionState {
     // Note time is handled separately as not a per-region stat. See FloatRingBuffer class
 
@@ -59,6 +65,15 @@ class RegionState {
     readonly unrollG: Float32Array;
     readonly unrollB: Float32Array;
     readonly unrollTimes: Float64Array;
+
+    // Hold-last-value for missing frames
+    private lastR: number = 0;
+    private lastG: number = 0;
+    private lastB: number = 0;
+    private hasReceived: boolean = false; // Whether we've ever received a valid RGB sample
+
+    // Dropout tracking — consecutive frames with no RGB data
+    private _consecutiveMisses: number = 0;
 
     constructor(rgbCapacity: number) {
         this.rBuffer = new FloatRingBuffer(rgbCapacity);
@@ -75,6 +90,25 @@ class RegionState {
         this.rBuffer.push(r);
         this.gBuffer.push(g);
         this.bBuffer.push(b);
+        this.lastR = r;
+        this.lastG = g;
+        this.lastB = b;
+        this.hasReceived = true;
+        this._consecutiveMisses = 0;
+    }
+
+    //Push the last known RGB value to keep buffers aligned with timestamps. Returns false if never received a valid sample (nothing to hold).
+    pushHeld(): boolean {
+        if (!this.hasReceived) return false;
+        this.rBuffer.push(this.lastR);
+        this.gBuffer.push(this.lastG);
+        this.bBuffer.push(this.lastB);
+        this._consecutiveMisses++;
+        return true;
+    }
+
+    get consecutiveMisses(): number {
+        return this._consecutiveMisses;
     }
 
     get rgbReady(): boolean {
@@ -95,6 +129,11 @@ class RegionState {
         this.rBuffer.reset();
         this.gBuffer.reset();
         this.bBuffer.reset();
+        this.lastR = 0;
+        this.lastG = 0;
+        this.lastB = 0;
+        this.hasReceived = false;
+        this._consecutiveMisses = 0;
     }
 }
 
@@ -104,8 +143,7 @@ export class PulseProcessor {
 
     // Per-region state (RGB ring buffers + work arrays)
     private readonly regions: Record<string, RegionState> = {};
-    // Shared timestamp ring buffer added to per frame not per region
-    // TODO: switch to per-region timestamp incase a region doesn't have rgb data for a frame, so can be correctly interpolated.
+    // Shared timestamp ring buffer — per-region alignment handled by hold-last-value
     private readonly timeBuffer: Float64RingBuffer;
 
     // Streaming filter
@@ -125,7 +163,7 @@ export class PulseProcessor {
     private readonly interpG: Float32Array;
     private readonly interpB: Float32Array;
     private readonly interpTimes: Float64Array;
-    // Fused POS overlap-add buffer — H arrays averaged across regions before overlap-adding
+    // Fused POS overlap-add buffer — H arrays averaged across regions before overlap-adding here
     private readonly fusedPosBuffer: Float32Array;
     private fusedPosIndex: number = 0;
     private fusedPosReady: boolean = false;
@@ -184,12 +222,8 @@ export class PulseProcessor {
     // POS estimate, and fuse per region results for each frame
     // Note rgbPerRegion type is to easily accept the output from the ROI RGB averager code elsewhere.
     pushFrame(rgbPerRegion: Record<string, { rgb: RGB | null }>, time: number): PulseFrame {
-        // TODO: Big issue here - what happens if a region doesn't contain pixels (e.g. off screen)? RGB buffers etc then become misaligned
-        //  Each region could have own time buffer and POS index - but then how to fuse them later?
-        //  Or just store sentinel null/Nan/grey data and don't add it to fused estimate?
-        //  Maybe do region frame timestamps and interpolate to the same times between regions (using start time) on H arrays can be averaged and combined?
         const regionPulses: Record<string, number | null> = {};
-        let anyRegionProduced = false; // Store if we got valid data from any of the regions. Note no face detected is handled elsewhere
+        let anyRegionProduced = false;
 
         // Store timestamp (shared across regions)
         this.timeBuffer.push(time);
@@ -200,21 +234,26 @@ export class PulseProcessor {
         for (const [name, state] of Object.entries(this.regions)) {
             const rgb = rgbPerRegion[name]?.rgb ?? null;
 
-            if (!rgb) {
-                // TODO: Note this leaves gaps in RGB misaligning it with timestamp data, probably just persisting previously assigned value
-                //    maybe assign NaN, then ignore NaNs in interpolation function, and NaN in region H array, and factor that into averaging for fused estimate?
-                //    state.pushRGB(NaN, NaN, NaN);??
+            if (rgb) {
+                // Valid RGB — push and reset miss counter
+                state.pushRGB(rgb.r, rgb.g, rgb.b);
+            } else if (state.consecutiveMisses < this.config.maxConsecutiveMisses) {
+                // Missing RGB but below dropout threshold — hold last value to keep aligned
+                if (!state.pushHeld()) {
+                    // Never received any data for this region yet — nothing to hold
+                    regionPulses[name] = null;
+                    continue;
+                }
+            } else {
+                // Sustained dropout — exclude this region from fusion entirely
                 regionPulses[name] = null;
                 continue;
             }
 
-            // Push RGB to regional buffer
-            state.pushRGB(rgb.r, rgb.g, rgb.b);
-
-            // If POS window full, start processing
+            // If POS window full, run POS and collect H array
             if (state.rgbReady) {
                 const hArray = this.processRegionPOS(state);
-                regionPulses[name] = hArray[hArray.length - 1]; // store most recent sample
+                regionPulses[name] = hArray[hArray.length - 1];
                 hArrays.push(hArray);
                 anyRegionProduced = true;
             } else {
