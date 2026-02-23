@@ -122,10 +122,10 @@ tracker.onGazeResults = (result: BiometricsResult) => {
         }
     }
     if (result.debug?.heartRateResult) {
-        const hr = result.debug.heartRateResult;
-        console.log('H', hr);
-        if (hr.posH !== null && hr.posH !== undefined) {
-            drawPosGraph(hr.posH, hr.bpm, hr.peakBPM);
+        const heartRateResult = result.debug?.heartRateResult;
+        console.log('H', heartRateResult);
+        if (heartRateResult.fusedSample !== null && heartRateResult.fusedSample !== undefined) {
+            drawPosGraph(heartRateResult.fusedSample, heartRateResult.raw.fft?.bpm??0, heartRateResult.raw.peak?.bpm??0);
         }
         const canvas = document.getElementById('output_canvas') as HTMLCanvasElement;
         const ctx = canvas.getContext('2d');
@@ -137,7 +137,6 @@ tracker.onGazeResults = (result: BiometricsResult) => {
         ctx.strokeStyle = 'purple';
         ctx.lineWidth = 2;
 
-        const heartRateResult = result.debug?.heartRateResult;
         // console.log(heartRateResult.posH);
 
         // Iterate over regions object
@@ -149,7 +148,7 @@ tracker.onGazeResults = (result: BiometricsResult) => {
             polygon.forEach((p) => ctx.lineTo(p.x, p.y));
             ctx.closePath();
 
-            const posH = regionData.posH ?? 0;
+            const posH = regionData.pulse ?? 0;
             // Normalize: -0.008 (transparent) → +0.003 (fully opaque)
             const alpha = Math.min(1, Math.max(0, (posH + 0.009) / 0.015));
             ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;

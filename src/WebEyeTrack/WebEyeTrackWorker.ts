@@ -3,7 +3,7 @@
 import WebEyeTrack from './WebEyeTrack.ts';
 // import type { TrackingContext } from './types';
 // import { FACE_ROIS } from './utils/roiUtils';
-import { HeartRateEstimator } from '../rPPG/HeartRateEstimator.ts';
+import { HeartRateMonitor } from '../rPPG';
 import FaceLandmarkerClient from '../Core/FaceLandmarkerClient.ts';
 import type { BiometricsResult } from "./types.ts";
 // import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
@@ -13,7 +13,7 @@ let faceLandmarker: FaceLandmarkerClient;
 let tracker: WebEyeTrack;
 
 // Instantiate heart rate estimator in global scope
-const heartRateEstimator = new HeartRateEstimator({ sampleRate: 25 });
+const heartRateMonitor = new HeartRateMonitor({ sampleRate: 25 });
 
 let status: 'initializing' | 'idle' | 'inference' | 'calib' = 'initializing';
 
@@ -72,7 +72,7 @@ self.onmessage = async (e: MessageEvent) => {
         let summary;
         let heartRateResult;
         if (isFaceDetected) {
-          heartRateResult = heartRateEstimator.processLandmarks(frame, context.videoTime, faceResult);
+          heartRateResult = heartRateMonitor.processFrame(frame, faceResult, context.videoTime);
 
           const facialTransformationMatrix = faceResult.facialTransformationMatrixes[0].data;
           // vitalsResult = foreheadEstimator.processFrame(
