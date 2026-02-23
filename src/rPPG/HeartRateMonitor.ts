@@ -35,6 +35,7 @@ import type { BPMSmoother } from './signal/TemporalSmoothing';
 
 import type { PipelineConfig, RGB } from './types';
 import { DEFAULT_PIPELINE_CONFIG } from './types';
+import { BandpassFilter } from "./signal/BandpassFilter.ts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,7 @@ export interface HeartRateResult {
     bpm: number | null;
     confidence: number;
     fusedSample: number | null;
+    filteredSample: number | null;
     raw: {
         peak?: PeakResult;
         fft?: FFTEstimate;
@@ -102,6 +104,7 @@ export class HeartRateMonitor {
     // Sub-components (public for advanced access)
     readonly roi: ROIExtractor;
     readonly pulse: PulseProcessor;
+    private readonly bandpass: BandpassFilter;
     readonly peak: PeakEstimator | null;
     readonly fft: FFTEstimator | null;
     private readonly smoother: BPMSmoother;
@@ -123,6 +126,8 @@ export class HeartRateMonitor {
             posWindowMultiplier: cfg.posWindowMultiplier,
             signalWindowSeconds: cfg.signalWindowSeconds,
         });
+
+        this.bandpass = BandpassFilter.fromPipelineConfig(cfg);
 
         this.peak = (cfg.method === 'peak' || cfg.method === 'fused')
             ? new PeakEstimator({
@@ -164,8 +169,10 @@ export class HeartRateMonitor {
         // Estimate BPM
         const raw: HeartRateResult['raw'] = {};
         // Peak estimation: feed raw fused POS sample
+        let filteredSample: number | null = null;
         if (pulseFrame.fusedSample !== null && this.peak) {
-            const peakResult = this.peak.pushSample(pulseFrame.fusedSample);
+            filteredSample = this.bandpass.process(pulseFrame.fusedSample);
+            const peakResult = this.peak.pushSample(filteredSample);
             if (peakResult) raw.peak = peakResult;
         }
 
@@ -197,6 +204,7 @@ export class HeartRateMonitor {
             bpm: this.lastBPM,
             confidence: this.lastConfidence,
             fusedSample: pulseFrame.fusedSample,
+            filteredSample,
             raw,
             regions,
         };
