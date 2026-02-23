@@ -5,38 +5,54 @@ import type { BiometricsResult } from './WebEyeTrack';
 // After the imports, add a simple graph
 const posGraph = document.getElementById('pos_graph') as HTMLCanvasElement;
 const bpmDisplay = document.getElementById('bpm_display') as HTMLDivElement;
-posGraph.width = 300;
-posGraph.height = 100;
+posGraph.width = 600;
+posGraph.height = 200;
 const posCtx = posGraph.getContext('2d')!;
 const posHistory: number[] = [];
+const filteredHistory: number[] = [];
 const POS_MAX_POINTS = 300;
 
-function drawPosGraph(signal: number, bpm: number | null, peakBPM?: number | null) {
+function drawPosGraph(signal: number, filteredSignal: number | null, bpm: number | null, peakBPM?: number | null) {
     bpmDisplay.innerText = bpm && bpm > 0 ? `${Math.round(bpm)} BPM` : "Processing...";
-    bpmDisplay.innerText += peakBPM ? `| ${Math.round(peakBPM)}` : ''
+    bpmDisplay.innerText += peakBPM ? ` | ${Math.round(peakBPM)}` : '';
+
     posHistory.push(signal);
     if (posHistory.length > POS_MAX_POINTS) posHistory.shift();
+    if (filteredSignal !== null) {
+        filteredHistory.push(filteredSignal);
+        if (filteredHistory.length > POS_MAX_POINTS) filteredHistory.shift();
+    }
     if (posHistory.length < 2) return;
 
     const w = posGraph.width, h = posGraph.height;
     posCtx.clearRect(0, 0, w, h);
 
-    let min = Math.min(...posHistory);
-    let max = Math.max(...posHistory);
+    // Shared scale across both signals
+    const allValues = [...posHistory, ...filteredHistory];
+    let min = Math.min(...allValues);
+    let max = Math.max(...allValues);
     let range = max - min || 1;
     min -= range * 0.1; max += range * 0.1; range = max - min;
 
-    posCtx.strokeStyle = '#00ff00';
+    // Raw POS (green)
+    drawTrace(posHistory, 'green', w, h, min, range);
+    // Filtered POS (cyan)
+    if (filteredHistory.length >= 2) {
+        drawTrace(filteredHistory, 'red', w, h, min, range);
+    }
+}
+
+function drawTrace(history: number[], color: string, w: number, h: number, min: number, range: number) {
+    posCtx.strokeStyle = color;
     posCtx.lineWidth = 2;
     posCtx.beginPath();
-    posHistory.forEach((val, i) => {
+    history.forEach((val, i) => {
         const x = (i / (POS_MAX_POINTS - 1)) * w;
         const y = h - ((val - min) / range) * h;
         if (i === 0) posCtx.moveTo(x, y); else posCtx.lineTo(x, y);
     });
     posCtx.stroke();
 }
-
 // 1. Initialize the passive tracker
 const tracker = new WebEyeTrackProxy({
     clickTTL: 30,
@@ -125,7 +141,12 @@ tracker.onGazeResults = (result: BiometricsResult) => {
         const heartRateResult = result.debug?.heartRateResult;
         console.log('H', heartRateResult);
         if (heartRateResult.fusedSample !== null && heartRateResult.fusedSample !== undefined) {
-            drawPosGraph(heartRateResult.fusedSample, heartRateResult.raw.fft?.bpm??0, heartRateResult.raw.peak?.bpm??0);
+            drawPosGraph(
+                heartRateResult.fusedSample,
+                heartRateResult.filteredSample ?? null,
+                heartRateResult.raw.fft?.bpm ?? 0,
+                heartRateResult.raw.peak?.bpm ?? 0
+            );
         }
         const canvas = document.getElementById('output_canvas') as HTMLCanvasElement;
         const ctx = canvas.getContext('2d');
