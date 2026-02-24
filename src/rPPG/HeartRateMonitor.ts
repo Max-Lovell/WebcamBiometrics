@@ -94,6 +94,7 @@ export interface HeartRateResult {
         fft?: FFTEstimate;
     };
     regions: Record<string, RegionDetail>;
+    peakDetected: boolean;
 }
 
 // ─── HeartRateMonitor Class ─────────────────────────────────────────────────
@@ -164,7 +165,6 @@ export class HeartRateMonitor {
         const roiResult = this.roi.extract(frame, landmarks);
         // Extract POS signal from each RGB Average
         const pulseFrame = this.pulse.pushFrame(roiResult, time);
-        // TODO: Bandpass filter the POS signal
 
         // Estimate BPM
         const raw: HeartRateResult['raw'] = {};
@@ -210,6 +210,7 @@ export class HeartRateMonitor {
             filteredSample,
             raw,
             regions,
+            peakDetected: this.peak?.peakDetectedThisFrame ?? false,
         };
     }
 

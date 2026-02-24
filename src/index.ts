@@ -11,10 +11,14 @@ const posCtx = posGraph.getContext('2d')!;
 const posHistory: number[] = [];
 const filteredHistory: number[] = [];
 const POS_MAX_POINTS = 300;
+const peakFrames: number[] = []; // absolute frame numbers where peaks occurred
+let frameCounter = 0;
 
-function drawPosGraph(signal: number, filteredSignal: number | null, bpm: number | null, peakBPM?: number | null) {
+function drawPosGraph(signal: number, filteredSignal: number | null, bpm: number | null, peakBPM: number | null, peakDetected: boolean) {
     bpmDisplay.innerText = bpm && bpm > 0 ? `${Math.round(bpm)} BPM` : "Processing...";
     bpmDisplay.innerText += peakBPM ? ` | ${Math.round(peakBPM)}` : '';
+    frameCounter++;
+    if (peakDetected) peakFrames.push(frameCounter);
 
     posHistory.push(signal);
     if (posHistory.length > POS_MAX_POINTS) posHistory.shift();
@@ -39,6 +43,22 @@ function drawPosGraph(signal: number, filteredSignal: number | null, bpm: number
     // Filtered POS (cyan)
     if (filteredHistory.length >= 2) {
         drawTrace(filteredHistory, 'red', w, h, min, range);
+    }
+
+    const visibleStart = frameCounter - Math.min(filteredHistory.length, POS_MAX_POINTS);
+    posCtx.fillStyle = '#ffff00';
+    for (let i = peakFrames.length - 1; i >= 0; i--) {
+        const age = frameCounter - peakFrames[i];
+        if (age >= POS_MAX_POINTS) { peakFrames.splice(0, i + 1); break; }
+
+        const idx = filteredHistory.length - 1 - age;
+        if (idx < 0 || idx >= filteredHistory.length) continue;
+
+        const x = (idx / (POS_MAX_POINTS - 1)) * w;
+        const y = h - ((filteredHistory[idx] - min) / range) * h;
+        posCtx.beginPath();
+        posCtx.arc(x, y, 4, 0, Math.PI * 2);
+        posCtx.fill();
     }
 }
 
@@ -139,13 +159,15 @@ tracker.onGazeResults = (result: BiometricsResult) => {
     }
     if (result.debug?.heartRateResult) {
         const heartRateResult = result.debug?.heartRateResult;
-        console.log('H', heartRateResult);
+        // console.log('H', heartRateResult);
+        console.log('raw fused: ', heartRateResult.fusedSample, 'filtered: ', heartRateResult.filteredSample);
         if (heartRateResult.fusedSample !== null && heartRateResult.fusedSample !== undefined) {
             drawPosGraph(
                 heartRateResult.fusedSample,
                 heartRateResult.filteredSample ?? null,
                 heartRateResult.raw.fft?.bpm ?? 0,
-                heartRateResult.raw.peak?.bpm ?? 0
+                heartRateResult.raw.peak?.bpm ?? 0,
+                heartRateResult.peakDetected ?? false
             );
         }
         const canvas = document.getElementById('output_canvas') as HTMLCanvasElement;
