@@ -289,12 +289,16 @@ export class PulseProcessor {
     }
 
     // Average H arrays element-wise and overlap-add into the fused signal buffer and return the most recent fused sample (for stream filtering)
-    private fuseAndOverlapAdd(hArrays: Float32Array[]): number {
+    private fuseAndOverlapAdd(
+        hArrays: Float32Array[],
+        exportCurrentSample: boolean = true // True = POS value for this frame, False = fully overlap added sample from -l frames
+    ): number {
         const hLen = hArrays[0].length;
 
         // Element-wise average into work array
         this.hArrayWork.fill(0);
         for (const h of hArrays) {
+            // console.log('Region H Length: ', h.length, this.rgbCapacity)
             for (let i = 0; i < hLen; i++) {
                 this.hArrayWork[i] += h[i];
             }
@@ -312,7 +316,8 @@ export class PulseProcessor {
             this.fusedPosBuffer[idx] += this.hArrayWork[i];
         }
 
-        return this.hArrayWork[hLen - 1];
+        // export this frame's POS value, or overlap added value
+        return exportCurrentSample ? this.hArrayWork[hLen - 1] : this.fusedPosBuffer[windowStart];
     }
 
     // Advance the fused POS write index, wrapping and marking ready on first fill.
