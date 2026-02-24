@@ -47,7 +47,8 @@ export function computeBiquadCoefficients(
 ): BiquadCoefficients {
     // Pre-warp the cutoff frequency for the bilinear transform.
     // Without this, the actual digital cutoff would drift from the intended value,
-    // especially as cutoff approaches Nyquist (fs/2).
+    // especially as cutoff approaches Nyquist (fs/2)
+    // See section (6-9) https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html.
     const omega = 2 * Math.PI * cutoffHz / sampleRate;  // Digital angular frequency
     const sinOmega = Math.sin(omega);
     const cosOmega = Math.cos(omega);
@@ -60,7 +61,7 @@ export function computeBiquadCoefficients(
 
     let b0: number, b1: number, b2: number, a0: number, a1: number, a2: number;
 
-    if (type === 'lowpass') {
+    if (type === 'lowpass') { // See section (15) https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
         // Butterworth low-pass from the Audio EQ Cookbook:
         //   H(s) = 1 / (s² + s/Q + 1)   (analog prototype)
         // After bilinear transform:
@@ -70,7 +71,7 @@ export function computeBiquadCoefficients(
         a0 = 1 + alpha;
         a1 = -2 * cosOmega;
         a2 = 1 - alpha;
-    } else {
+    } else { // See section (16) https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
         // Butterworth high-pass:
         //   H(s) = s² / (s² + s/Q + 1)   (analog prototype)
         b0 = (1 + cosOmega) / 2;
@@ -83,6 +84,7 @@ export function computeBiquadCoefficients(
 
     // Normalise so a0 = 1 (standard Direct Form I convention).
     // This means we only need to store 5 values, not 6.
+    // See 'Biquad Filter Formulae' section (4) https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
     return {
         b0: b0 / a0,
         b1: b1 / a0,
@@ -130,8 +132,8 @@ export class BiquadFilter {
         // The core difference equation:
         // Feedforward (b terms): weighted sum of current and past inputs
         // Feedback (a terms): weighted sum of past outputs (this is what makes it IIR)
-        const y = b0 * x + b1 * this.x1 + b2 * this.x2
-            - a1 * this.y1 - a2 * this.y2;
+        // See section (4) https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
+        const y = b0 * x + b1 * this.x1 + b2 * this.x2 - a1 * this.y1 - a2 * this.y2;
 
         // Shift state for next call
         this.x2 = this.x1;
@@ -203,6 +205,7 @@ export class BandpassFilter {
     }
 
     // Process a single sample through both filter stages
+    // Note output lags behind live for a few samples due to IIR filter
     process(sample: number): number {
         return this.lowPass.process(this.highPass.process(sample));
     }
