@@ -1,5 +1,5 @@
 /**
- * Peak Estimator — Tier 3a
+ * Peak Estimator
  * Streaming peak detection on fused POS samples.
  *
  * Detects local maxima in the pulse waveform, records inter-peak intervals,
@@ -25,14 +25,10 @@ import { DEFAULT_PIPELINE_CONFIG } from '../types.ts';
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface PeakEstimatorConfig extends PipelineConfig {
-    /** Fraction of adaptive envelope a peak must exceed. (0–1). Default: 0.3 */
-    amplitudeThreshold: number;
-    /** Envelope decay per sample. Default: 0.998 */
-    envelopeDecay: number;
-    /** Max inter-peak intervals to keep for median. Default: 8 */
-    maxIntervals: number;
-    /** Min intervals before producing an estimate. Default: 3 */
-    minIntervals: number;
+    amplitudeThreshold: number; // Fraction of adaptive envelope a peak must exceed. (0–1). Default: 0.3
+    envelopeDecay: number; // Envelope decay per sample. Default: 0.998
+    maxIntervals: number; // Max inter-peak intervals to keep for median. Default: 8
+    minIntervals: number; // Min intervals before producing an estimate. Default: 3
 }
 
 export const DEFAULT_PEAK_CONFIG: PeakEstimatorConfig = {
@@ -45,8 +41,7 @@ export const DEFAULT_PEAK_CONFIG: PeakEstimatorConfig = {
 
 export interface PeakResult {
     bpm: number;
-    /** Fraction of intervals within 20% of median */
-    confidence: number;
+    confidence: number; // Fraction of intervals within 20% of median
     intervalCount: number;
     method: 'peak';
 }
@@ -75,7 +70,8 @@ export class PeakEstimator {
     private firstPeakSeen: boolean = false; // Skip first interval (not a real IBI)
 
     // Cached result
-    private cachedResult: PeakResult | null = null;
+    private cachedResult: PeakResult | null = null; // TODO: why did I cache results again??
+    peakDetectedThisFrame: boolean = false;
 
     constructor(config?: Partial<PeakEstimatorConfig>) {
         this.config = { ...DEFAULT_PEAK_CONFIG, ...config };
@@ -85,14 +81,12 @@ export class PeakEstimator {
     }
 
     // ─── Public API ─────────────────────────────────────────────────────
-
-    /**
-     * Feed one fused POS sample. Call once per frame.
-     * Returns updated PeakResult if enough intervals have been collected, else null.
-     */
+    // Called once per frame on POS sample. Returns updated PeakResult if enough intervals have been collected, else null.
     pushSample(sample: number): PeakResult | null {
+        // Maintains 3 sample sliding window (t-2, t-1, t)
         this.sampleCount++;
         this.samplesSinceLast++;
+        this.peakDetectedThisFrame = false;
 
         // Update adaptive envelope: decay, then jump if new sample is larger
         this.envelope *= this.config.envelopeDecay;
@@ -122,17 +116,17 @@ export class PeakEstimator {
         return this.cachedResult;
     }
 
-    /** Most recent estimate, or null if not enough data yet. */
+    // Most recent estimate, or null if not enough data yet.
     getLatest(): PeakResult | null {
         return this.cachedResult;
     }
 
-    /** Whether enough intervals have been collected for a valid estimate. */
+    // Whether enough intervals have been collected for a valid estimate.
     isReady(): boolean {
         return this.intervalCount >= this.config.minIntervals;
     }
 
-    /** Reset all state. Call when face tracking is lost or scene changes. */
+    // Reset all state. Call when face tracking is lost or scene changes.
     reset(): void {
         this.prevPrev = 0;
         this.prev = 0;
@@ -151,6 +145,7 @@ export class PeakEstimator {
     private onPeakDetected(): void {
         const interval = this.samplesSinceLast;
         this.samplesSinceLast = 0;
+        this.peakDetectedThisFrame = true;
 
         // Skip the first peak — interval from stream start isn't a real IBI
         if (!this.firstPeakSeen) {
