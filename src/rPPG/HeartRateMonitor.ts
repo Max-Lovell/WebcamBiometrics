@@ -168,12 +168,15 @@ export class HeartRateMonitor {
 
         // Estimate BPM
         const raw: HeartRateResult['raw'] = {};
-        // Peak estimation: feed raw fused POS sample
         let filteredSample: number | null = null;
-        if (pulseFrame.fusedSample !== null && this.peak) {
+        if(pulseFrame.fusedSample !== null) {
+            // Bandpass filter
             filteredSample = this.bandpass.process(pulseFrame.fusedSample);
-            const peakResult = this.peak.pushSample(filteredSample);
-            if (peakResult) raw.peak = peakResult;
+            // Simple peak estimation
+            if (this.peak) {
+                const peakResult = this.peak.pushSample(filteredSample);
+                if (peakResult) raw.peak = peakResult;
+            }
         }
 
         // FFT estimation: pass raw fused signal (FFTEstimator handles rate limiting + filtering)
