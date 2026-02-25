@@ -33,10 +33,10 @@ export interface PeakEstimatorConfig extends PipelineConfig {
 
 export const DEFAULT_PEAK_CONFIG: PeakEstimatorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
-    amplitudeThreshold: 0.3,
     envelopeDecay: 0.998,
+    amplitudeThreshold: 0.2,
     maxIntervals: 8,
-    minIntervals: 3,
+    minIntervals: 2,
 };
 
 export interface PeakResult {
