@@ -48,6 +48,8 @@ export interface HeartRateMonitorConfig extends PipelineConfig {
     posWindowMultiplier: number;
     signalWindowSeconds: number;
     // PeakEstimator
+    peakMinBPM: number; // Different to bandpass filter BPM - should be lower.
+    peakMaxBPM: number;
     peakAmplitudeThreshold: number;
     peakEnvelopeDecay: number;
     peakMaxIntervals: number;
@@ -65,6 +67,8 @@ export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
     method: 'fused',
     posWindowMultiplier: 1.6,
     signalWindowSeconds: 15,
+    peakMinBPM: 50,
+    peakMaxBPM: 150,
     peakAmplitudeThreshold: 0.3,
     peakEnvelopeDecay: 0.998,
     peakMaxIntervals: 8,
@@ -131,8 +135,8 @@ export class HeartRateMonitor {
         this.peak = (cfg.method === 'peak' || cfg.method === 'fused')
             ? new PeakEstimator({
                 sampleRate: cfg.sampleRate,
-                minBPM: cfg.minBPM,
-                maxBPM: cfg.maxBPM,
+                minBPM: cfg.peakMinBPM, // Pass separate minBPM
+                maxBPM: cfg.peakMaxBPM, // Pass separate maxBPM
                 amplitudeThreshold: cfg.peakAmplitudeThreshold,
                 envelopeDecay: cfg.peakEnvelopeDecay,
                 maxIntervals: cfg.peakMaxIntervals,
