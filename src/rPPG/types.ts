@@ -13,31 +13,15 @@ export interface RGB {
  */
 
 // ─── Core Pipeline Config ───────────────────────────────────────────────────
-
-/**
- * Parameters shared across all signal processing modules.
- *
- * Set these once at the top level (HeartRateEstimator) and they propagate
- * to all sub-modules, eliminating the risk of mismatched BPM ranges
- * or sample rates between filter, FFT, and peak detector.
- */
+// Parameters shared across all signal processing modules. TODO: extend with more options
 export interface PipelineConfig {
-    /** Sample rate in Hz (camera FPS, or target FPS after interpolation). */
-    sampleRate: number;
-
-    /** Minimum detectable heart rate in BPM.
-     *  Sets the high-pass filter cutoff and lower bound for FFT/peak search.
-     *  42 BPM covers bradycardia; raise to 50-60 for exercise contexts. */
-    minBPM: number;
-
-    /** Maximum detectable heart rate in BPM.
-     *  Sets the low-pass filter cutoff and upper bound for FFT/peak search.
-     *  240 BPM covers extreme tachycardia; lower to 180-200 for resting contexts. */
-    maxBPM: number;
+    sampleRate: number; // Sample rate in Hz (camera FPS, or target FPS after interpolation).
+    minBPM: number; // Minimum detectable heart rate in BPM/ high-pass filter cutoff - 42 BPM covers bradycardia; raise to 50-60 for exercise contexts.
+    maxBPM: number; // Sets the low-pass filter cutoff - 240 would be quite high, 180-200 more reasonable
 }
 
 export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
     sampleRate: 30,
-    minBPM: 50,
-    maxBPM: 100,
+    minBPM: 40,
+    maxBPM: 200,
 };
