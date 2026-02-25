@@ -122,8 +122,6 @@ export class HeartRateMonitor {
 
         this.pulse = new PulseProcessor(this.roi.regionNames, {
             sampleRate: cfg.sampleRate,
-            minBPM: cfg.minBPM,
-            maxBPM: cfg.maxBPM,
             posWindowMultiplier: cfg.posWindowMultiplier,
             signalWindowSeconds: cfg.signalWindowSeconds,
         });
