@@ -51,7 +51,7 @@ export interface HeartRateMonitorConfig extends PipelineConfig {
     peakMinBPM: number; // Different to bandpass filter BPM - should be lower.
     peakMaxBPM: number;
     peakAmplitudeThreshold: number;
-    peakEnvelopeDecay: number;
+    peakEnvelopeDecayRate: number;  // Half-life in ms (replaces per-sample envelopeDecay)
     peakMaxIntervals: number;
     peakMinIntervals: number;
     // FFTEstimator
@@ -69,10 +69,10 @@ export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
     signalWindowSeconds: 15,
     peakMinBPM: 50,
     peakMaxBPM: 150,
-    peakAmplitudeThreshold: 0.3,
-    peakEnvelopeDecay: 0.998,
+    peakAmplitudeThreshold: 0.2,
+    peakEnvelopeDecayRate: 500,  // 500ms half-life
     peakMaxIntervals: 8,
-    peakMinIntervals: 3,
+    peakMinIntervals: 2,
     fftInterval: 15,
     smoothing: 'median',
     smootherWindow: 5,
@@ -138,7 +138,7 @@ export class HeartRateMonitor {
                 minBPM: cfg.peakMinBPM, // Pass separate minBPM
                 maxBPM: cfg.peakMaxBPM, // Pass separate maxBPM
                 amplitudeThreshold: cfg.peakAmplitudeThreshold,
-                envelopeDecay: cfg.peakEnvelopeDecay,
+                envelopeDecayRate: cfg.peakEnvelopeDecayRate,
                 maxIntervals: cfg.peakMaxIntervals,
                 minIntervals: cfg.peakMinIntervals,
             })
@@ -174,9 +174,9 @@ export class HeartRateMonitor {
         if(pulseFrame.fusedSample !== null) {
             // Bandpass filter
             filteredSample = this.bandpass.process(pulseFrame.fusedSample);
-            // Simple peak estimation
+            // Peak estimation
             if (this.peak) {
-                const peakResult = this.peak.pushSample(filteredSample);
+                const peakResult = this.peak.pushSample(filteredSample, time);
                 if (peakResult) raw.peak = peakResult;
             }
         }
