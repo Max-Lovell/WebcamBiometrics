@@ -89,7 +89,12 @@ export class PeakEstimator {
         this.peakDetectedThisFrame = false;
 
         // Update adaptive envelope: decay, then jump if new sample is larger
-        this.envelope *= this.config.envelopeDecay;
+        // If no peak detected for a while, decay faster
+        if (this.samplesSinceLast > this.config.sampleRate * 2) {
+            this.envelope *= 0.98; // No peak for 2 seconds — something's wrong, decay fast
+        } else {
+            this.envelope *= this.config.envelopeDecay;
+        }
         const absSample = Math.abs(sample);
         if (absSample > this.envelope) {
             this.envelope = absSample;
