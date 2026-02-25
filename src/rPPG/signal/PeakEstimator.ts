@@ -35,7 +35,7 @@ export interface PeakEstimatorConfig extends PipelineConfig {
 
 export const DEFAULT_PEAK_CONFIG: PeakEstimatorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
-    amplitudeThreshold: 0.3,
+    amplitudeThreshold: 0.2,
     envelopeDecayRate: 500, // Half-life in ms — envelope halves every ~500ms
     maxIntervals: 8,
     minIntervals: 2,
