@@ -47,6 +47,7 @@ export interface HeartRateMonitorConfig extends PipelineConfig {
     // PulseProcessor
     posWindowMultiplier: number;
     signalWindowSeconds: number;
+    interpolate: boolean;
     // PeakEstimator
     peakMinBPM: number; // Different to bandpass filter BPM - should be lower.
     peakMaxBPM: number;
@@ -67,6 +68,7 @@ export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
     method: 'fused',
     posWindowMultiplier: 1.6,
     signalWindowSeconds: 15,
+    interpolate: true,
     peakMinBPM: 50,
     peakMaxBPM: 150,
     peakAmplitudeThreshold: 0.2,
@@ -128,6 +130,7 @@ export class HeartRateMonitor {
             sampleRate: cfg.sampleRate,
             posWindowMultiplier: cfg.posWindowMultiplier,
             signalWindowSeconds: cfg.signalWindowSeconds,
+            interpolate: cfg.interpolate,
         });
 
         this.bandpass = BandpassFilter.fromPipelineConfig(cfg);
@@ -165,26 +168,34 @@ export class HeartRateMonitor {
     ): HeartRateResult {
         // Extract RGB average from each region
         const roiResult = this.roi.extract(frame, landmarks);
-        // Extract POS signal from each RGB Average
+        // Extract POS signal from each RGB Average.
+        // When interpolation is on, pulseFrame.fusedSamples may contain 0..N grid-aligned samples.
         const pulseFrame = this.pulse.pushFrame(roiResult, time);
 
-        // Estimate BPM
+        // Process all fused samples through bandpass and peak detector
+        // Usually 1 iteration. On the first interpolated frame: 0. Occasionally 2 if camera was late.
         const raw: HeartRateResult['raw'] = {};
         let filteredSample: number | null = null;
-        if(pulseFrame.fusedSample !== null) {
-            // Bandpass filter
-            filteredSample = this.bandpass.process(pulseFrame.fusedSample);
-            // Peak estimation
+        let latestFusedSample: number | null = null;
+        let peakDetected = false;
+
+        for (const { value, time: sampleTime } of pulseFrame.fusedSamples) {
+            latestFusedSample = value;
+            // Bandpass filter — IIR assumes uniform dt, which interpolation guarantees
+            filteredSample = this.bandpass.process(value);
+            // Peak estimation — sees every grid sample with correct timestamp
             if (this.peak) {
-                const peakResult = this.peak.pushSample(filteredSample, time);
+                const peakResult = this.peak.pushSample(filteredSample, sampleTime);
                 if (peakResult) raw.peak = peakResult;
+                // A peak detected on any grid sample this frame counts
+                if (this.peak.peakDetectedThisFrame) peakDetected = true;
             }
         }
 
         // FFT estimation: pass raw fused signal (FFTEstimator handles rate limiting + filtering)
         if (this.fft) {
             const fftResult = this.fft.update(this.pulse.getFusedSignal());
-            if (fftResult) raw.fft = fftResult;
+            if (fftResult) raw.fft = fftResult; // Replace if new result available
         }
 
         // Fusion + Smoothing
@@ -208,11 +219,11 @@ export class HeartRateMonitor {
             timestamp: time,
             bpm: this.lastBPM,
             confidence: this.lastConfidence,
-            fusedSample: pulseFrame.fusedSample,
+            fusedSample: latestFusedSample,
             filteredSample,
             raw,
             regions,
-            peakDetected: this.peak?.peakDetectedThisFrame ?? false,
+            peakDetected,
         };
     }
 
