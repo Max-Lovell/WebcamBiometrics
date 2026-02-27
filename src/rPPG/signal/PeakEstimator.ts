@@ -17,6 +17,8 @@
  *   - Maintains a ring buffer of recent inter-peak intervals (in ms)
  *   - BPM = 60000 / median(intervals)
  *   - Confidence = fraction of intervals within 20% of median
+ *
+ *  TODO: difficult to distinguish systolic from diastolic peak, or find dictrotic notch - is there research on peak detection for PPG?
  */
 
 import { median } from '../utils/math.ts';

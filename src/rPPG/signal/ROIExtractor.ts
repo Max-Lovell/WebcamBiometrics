@@ -6,6 +6,8 @@
  *   'scanline' (default) — One frame readback, scanline masks for polygon averaging.
  *                           Uses VideoFrame.copyTo() when available, else single drawImage + getImageData.
  *   'canvas'  (legacy)   — Per-region drawImage with canvas clip. Slower but kept for comparison.
+ *
+ * TODO: This is fine speed wise, but slowest part of the rPPG at time of writing. Consider TensorFlow or WebGPU version of this.
  */
 
 import type { FaceLandmarkerResult, NormalizedLandmark } from '@mediapipe/tasks-vision';

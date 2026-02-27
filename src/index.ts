@@ -160,7 +160,7 @@ tracker.onGazeResults = (result: BiometricsResult) => {
     if (result.debug?.heartRateResult) {
         const heartRateResult = result.debug?.heartRateResult;
         // console.log('H', heartRateResult);
-        console.log('raw fused: ', heartRateResult.fusedSample, 'filtered: ', heartRateResult.filteredSample);
+        // console.log('raw fused: ', heartRateResult.fusedSample, 'filtered: ', heartRateResult.filteredSample);
         if (heartRateResult.fusedSample !== null && heartRateResult.fusedSample !== undefined) {
             drawPosGraph(
                 heartRateResult.fusedSample,
