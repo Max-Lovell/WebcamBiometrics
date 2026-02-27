@@ -13,7 +13,7 @@ let faceLandmarker: FaceLandmarkerClient;
 let tracker: WebEyeTrack;
 
 // Instantiate heart rate estimator in global scope
-const heartRateMonitor = new HeartRateMonitor({ sampleRate: 25 });
+const heartRateMonitor = new HeartRateMonitor();
 
 let status: 'initializing' | 'idle' | 'inference' | 'calib' = 'initializing';
 
@@ -56,14 +56,19 @@ self.onmessage = async (e: MessageEvent) => {
           // TODO: Make next frame start processing immediately using single-slot buffer where next frame is overridden with most recently received one whilst processing
 
         // TODO: extract frame height, width, and offscreen canvas or tensor ahead of time and pass down.
+        // console.time('FRAME')
         context.trace.push({ step: 'facelandmarker_start', timestamp: performance.now() });
-        const faceResult = await faceLandmarker.processFrame(frame, context.videoTime);
+        // console.time('Facelandmarker')
+        const faceResult = await faceLandmarker.processFrame(frame, context.videoTime); // Takes 10-13ms (40% of time)
+        // console.timeEnd('Facelandmarker')
         context.trace.push({ step: 'facelandmarker_end', timestamp: performance.now() });
         const isFaceDetected = faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0;
 
         // TODO: should really handle no face detected here in Worker and not WebEyeTrack tracker...
         context.trace.push({ step: 'webeyetrack_start', timestamp: performance.now() });
-        const gazeResult = await tracker.step(frame, context.videoTime, faceResult);
+        // console.time('Webeyetrack')
+        const gazeResult = await tracker.step(frame, context.videoTime, faceResult); // Takes 14ms (50% of time)
+        // console.timeEnd('Webeyetrack')
         context.trace.push({ step: 'webeyetrack_end', timestamp: performance.now() });
 
         // Attach context to result so main thread can log
@@ -72,7 +77,9 @@ self.onmessage = async (e: MessageEvent) => {
         let summary;
         let heartRateResult;
         if (isFaceDetected) {
-          heartRateResult = heartRateMonitor.processFrame(frame, faceResult, context.videoTime);
+          // console.time('Heartrate')
+          heartRateResult = heartRateMonitor.processFrame(frame, faceResult, context.videoTime); // Takes 1-2ms
+          // console.timeEnd('Heartrate')
 
           const facialTransformationMatrix = faceResult.facialTransformationMatrixes[0].data;
           // vitalsResult = foreheadEstimator.processFrame(
@@ -115,7 +122,7 @@ self.onmessage = async (e: MessageEvent) => {
           // gpuPixels: gpuPixels
           debug: { heartRateResult}
         };
-
+        // console.timeEnd('FRAME')
         self.postMessage({ type: 'stepResult', result: finalResult});
       } catch (err) {
         console.error(err);
