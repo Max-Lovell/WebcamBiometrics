@@ -36,6 +36,7 @@ import type { BPMSmoother } from './signal/TemporalSmoothing';
 import type { PipelineConfig, RGB } from './types';
 import { DEFAULT_PIPELINE_CONFIG } from './types';
 import { BandpassFilter } from "./signal/BandpassFilter.ts";
+import {CHROM} from "./pulse/projection/CHROM.ts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ export class HeartRateMonitor {
             posWindowMultiplier: cfg.posWindowMultiplier,
             signalWindowSeconds: cfg.signalWindowSeconds,
             interpolate: cfg.interpolate,
-        });
+        }); //e.g. `,new CHROM(cfg.sampleRate)})` to run CHROM instead
 
         this.bandpass = BandpassFilter.fromPipelineConfig(cfg);
 
