@@ -11,9 +11,9 @@
  *   - Optional linear interpolation onto a uniform grid (for bandpass/FFT correctness)
  */
 
-import {Float64RingBuffer, FloatRingBuffer} from '../FloatRingBuffer';
-import type { WindowedPulseMethod } from '../pulse/projection/types.ts';
-import {POS} from '../pulse/projection/POS.ts';
+import {Float64RingBuffer, FloatRingBuffer} from '../FloatRingBuffer.ts';
+import type { WindowedPulseMethod } from './projection/types.ts';
+import {POS} from './projection/POS.ts';
 import {DEFAULT_PIPELINE_CONFIG, type RGB, type PipelineConfig} from '../types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────

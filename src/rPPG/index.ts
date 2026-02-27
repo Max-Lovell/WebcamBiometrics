@@ -37,11 +37,11 @@ export type {
 
 // ─── Tier 2: Pulse Signal Processing ────────────────────────────────────────
 
-export { PulseProcessor } from './signal/PulseProcessor';
+export { PulseProcessor } from './pulse/PulseProcessor.ts';
 export type {
     PulseProcessorConfig,
     PulseFrame,
-} from './signal/PulseProcessor';
+} from './pulse/PulseProcessor.ts';
 
 // ─── Tier 3: Heart Rate Estimation ──────────────────────────────────────────
 export { FFTEstimator } from './signal/FFTEstimator';

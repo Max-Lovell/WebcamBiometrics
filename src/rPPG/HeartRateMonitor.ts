@@ -22,7 +22,7 @@ import { ROIExtractor } from './signal/ROIExtractor.ts';
 import type { LandmarkerROIs } from './signal/ROIExtractor.ts';
 import type { VideoFrameData, Point } from "../types.ts";
 
-import { PulseProcessor } from './signal/PulseProcessor';
+import { PulseProcessor } from './pulse/PulseProcessor.ts';
 
 import { PeakEstimator } from './signal/PeakEstimator';
 import type { PeakResult } from './signal/PeakEstimator';
