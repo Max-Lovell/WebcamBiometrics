@@ -47,6 +47,7 @@ export interface PulseFrame {
     // Per-region raw POS H values (before region fusion) - for per region visualisation.
     // Reflects the latest processed state (last grid point if interpolating).
     regionPulses: Record<string, number | null>;
+    methodPulses: Record<string, number | null>;  // TODO: these should probably be nested inside the regions? Work on the return type structure once everything else is done.
     // Whether the signal buffer has enough data for BPM estimation
     signalReady: boolean;
 }
@@ -54,7 +55,7 @@ export interface PulseFrame {
 // ─── PulseProcessor Class ───────────────────────────────────────────────────
 export class PulseProcessor {
     private readonly config: PulseProcessorConfig;
-    private readonly method: WindowedPulseMethod;
+    private readonly methods: WindowedPulseMethod[];
     private readonly buffer: RGBBuffer;
 
     // Derived constants
@@ -71,16 +72,27 @@ export class PulseProcessor {
     private readonly fusedWork: Float32Array; // For unwrapping fusedSignalBuffer into chronological order (used by getFusedSignal)
 
     // Note Partial<> makes every property optional.
-    constructor(regionNames: string[] = ['region'], config?: Partial<PulseProcessorConfig>, method?: WindowedPulseMethod) {
+    constructor(regionNames: string[] = ['region'], config?: Partial<PulseProcessorConfig>, methods?: WindowedPulseMethod[]) {
         this.config = { ...DEFAULT_PULSE_CONFIG, ...config }; // Config with sensible defaults if not used.
         const fps = this.config.sampleRate;
 
         // Use provided method or default to POS
-        this.method = method ?? new POS(fps, this.config.posWindowMultiplier);
-        // Create RGB buffer with the method's window size
+        this.methods = methods ?? [new POS(fps, this.config.posWindowMultiplier)];
+        // Validate all methods share the same window size TODO: consider changing this to separate windows I guess?
+        const windowSize = this.methods[0].windowSize;
+        for (const m of this.methods) {
+            if (m.windowSize !== windowSize) {
+                throw new Error(
+                    `All methods must share the same windowSize. ` +
+                    `'${this.methods[0].name}' has ${windowSize}, ` +
+                    `'${m.name}' has ${m.windowSize}.`
+                );
+            }
+        }
+        // Create RGB buffer with the methods window size
         this.buffer = new RGBBuffer(regionNames, {
             sampleRate: fps,
-            windowSize: this.method.windowSize,
+            windowSize,
             interpolate: this.config.interpolate,
             maxConsecutiveMisses: this.config.maxConsecutiveMisses,
         });
@@ -88,7 +100,7 @@ export class PulseProcessor {
         this.signalCapacity = Math.ceil(fps * this.config.signalWindowSeconds);
         // Fused POS buffer and H array work array
         this.fusedSignalBuffer = new Float32Array(this.signalCapacity); // Stores overlap added POS samples
-        this.hArrayWork = new Float32Array(this.method.windowSize); // H array length <= rgbCapacity
+        this.hArrayWork = new Float32Array(windowSize); // H array length <= rgbCapacity
         this.fusedWork = new Float32Array(this.signalCapacity); // Unroll workspace for getFusedSignal()
     }
 
@@ -98,34 +110,60 @@ export class PulseProcessor {
         const ticks = this.buffer.pushFrame(rgbPerRegion, time);
         const fusedSamples: FusedSample[] = [];
         let regionPulses: Record<string, number | null> = {};
+        let methodPulses: Record<string, number | null> = {};
 
         for (const tick of ticks) {
-            const hArrays: Float32Array[] = [];
             const tickRegionPulses: Record<string, number | null> = {};
+            const tickMethodPulses: Record<string, number | null> = {};
 
-            for (const [name, window] of Object.entries(tick.regionWindows)) {
-                if (!window) {
-                    tickRegionPulses[name] = null;
-                    continue;
+            // Per-method region-fused H arrays (one per method that produced output)
+            const methodHArrays: Float32Array[] = [];
+
+            for (const method of this.methods) {
+                const regionHArrays: Float32Array[] = [];
+
+                for (const [name, window] of Object.entries(tick.regionWindows)) {
+                    if (!window) {
+                        // Only set null if not already set by another method
+                        if (!(name in tickRegionPulses)) {
+                            tickRegionPulses[name] = null;
+                        }
+                        continue;
+                    }
+
+                    const h = method.process(window);
+
+                    // Region pulse: last value from the first method that produces one
+                    // (keeps existing behaviour — one value per region for display)
+                    if (!(name in tickRegionPulses) || tickRegionPulses[name] === null) {
+                        tickRegionPulses[name] = h[h.length - 1];
+                    }
+
+                    regionHArrays.push(h);
                 }
 
-                const h = this.method.process(window);
-                tickRegionPulses[name] = h[h.length - 1];
-                hArrays.push(h);
+                // Fuse regions for this method
+                if (regionHArrays.length > 0) {
+                    const methodH = this.fuseRegions(regionHArrays);
+                    tickMethodPulses[method.name] = methodH[methodH.length - 1];
+                    methodHArrays.push(methodH);
+                } else {
+                    tickMethodPulses[method.name] = null;
+                }
             }
 
-            // Last tick's region pulses win (for display)
             regionPulses = tickRegionPulses;
+            methodPulses = tickMethodPulses;
 
-            // Fuse regions and overlap-add
-            if (hArrays.length > 0) {
-                const fusedValue = this.fuseAndOverlapAdd(hArrays);
+            // Fuse across methods and overlap-add
+            if (methodHArrays.length > 0) {
+                const fusedValue = this.fuseAndOverlapAdd(methodHArrays);
                 this.advanceFusedIndex();
                 fusedSamples.push({ value: fusedValue, time: tick.time });
             }
         }
 
-        // Fill in nulls for any regions not covered by any tick
+        // Fill in nulls for any regions not covered
         for (const name of this.buffer.regionNames) {
             if (!(name in regionPulses)) {
                 regionPulses[name] = null;
@@ -135,10 +173,25 @@ export class PulseProcessor {
         return {
             fusedSamples,
             regionPulses,
+            methodPulses,
             signalReady: this.isSignalReady(),
         };
     }
 
+    // Average an array of same-length H arrays element-wise into hArrayWork
+    private fuseRegions(hArrays: Float32Array[]): Float32Array {
+        const hLen = hArrays[0].length;
+        const result = new Float32Array(hLen);
+        for (const h of hArrays) {
+            for (let i = 0; i < hLen; i++) {
+                result[i] += h[i];
+            }
+        }
+        for (let i = 0; i < hLen; i++) {
+            result[i] /= hArrays.length;
+        }
+        return result;
+    }
 
     // Get the full fused signal in chronological order (for FFT analysis).
     // Returns null if the buffer hasn't filled once yet.

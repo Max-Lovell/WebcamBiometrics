@@ -50,7 +50,7 @@ export type SmoothingStrategy = 'median' | 'ema' | 'combined' | 'none';
 export interface HeartRateMonitorConfig extends PipelineConfig {
     method: EstimationMethod;
     // Projection method — name from registry (e.g., 'POS', 'CHROM'), or pass instance to constructor
-    projectionMethod: string,
+    projectionMethods: string[],
     // PulseProcessor
     posWindowMultiplier: number;
     signalWindowSeconds: number;
@@ -73,7 +73,7 @@ export interface HeartRateMonitorConfig extends PipelineConfig {
 export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = { // TODO: this needs to be sorted out a bit - either names or nesting
     ...DEFAULT_PIPELINE_CONFIG,
     method: 'fused',
-    projectionMethod: 'POS',
+    projectionMethods: ['POS'],
     posWindowMultiplier: 1.6,
     signalWindowSeconds: 15,
     interpolate: true,
@@ -108,6 +108,7 @@ export interface HeartRateResult {
         fft?: FFTEstimate;
     };
     regions: Record<string, RegionDetail>;
+    methodPulses: Record<string, number | null>;
     peakDetected: boolean;
 }
 
@@ -128,23 +129,25 @@ export class HeartRateMonitor {
     private lastBPM: number | null = null;
     private lastConfidence: number = 0;
 
-    constructor(config?: Partial<HeartRateMonitorConfig>, rois?: LandmarkerROIs, methodInstance?: WindowedPulseMethod) {
+    constructor(config?: Partial<HeartRateMonitorConfig>, rois?: LandmarkerROIs, methodInstances?: WindowedPulseMethod[]) {
         this.config = { ...DEFAULT_MONITOR_CONFIG, ...config };
         const cfg = this.config;
 
         this.roi = new ROIExtractor(rois);
         // Build or use provided projection method
-        const method = methodInstance ?? createMethod(cfg.projectionMethod, {
-            sampleRate: cfg.sampleRate,
-            windowMultiplier: cfg.posWindowMultiplier,
-        });
+        const methods = methodInstances ?? cfg.projectionMethods.map(name =>
+            createMethod(name, {
+                sampleRate: cfg.sampleRate,
+                windowMultiplier: cfg.posWindowMultiplier,
+            })
+        );
 
         this.pulse = new PulseProcessor(this.roi.regionNames, {
             sampleRate: cfg.sampleRate,
             posWindowMultiplier: cfg.posWindowMultiplier,
             signalWindowSeconds: cfg.signalWindowSeconds,
             interpolate: cfg.interpolate,
-        }, method); //e.g. `,new CHROM(cfg.sampleRate)})` to run CHROM instead
+        }, methods);
 
         this.bandpass = BandpassFilter.fromPipelineConfig(cfg);
 
@@ -237,6 +240,7 @@ export class HeartRateMonitor {
             raw,
             regions,
             peakDetected,
+            methodPulses: pulseFrame.methodPulses,
         };
     }
 
