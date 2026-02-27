@@ -53,8 +53,6 @@ export type {
 // ─── Signal Processing Primitives (advanced users) ──────────────────────────
 
 export { BandpassFilter, BiquadFilter } from './signal/BandpassFilter';
-export { calculatePOS } from './signal/POS';
-export type { RGBSignal, TimedRGBSignal } from './signal/POS';
 export { fft, computeSpectrum, findDominantFrequency, hanningWindow } from './signal/FFT';
 export type { SpectrumResult, PeakResult } from './signal/FFT';
 
