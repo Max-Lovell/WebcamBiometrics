@@ -12,7 +12,8 @@
  */
 
 import {Float64RingBuffer, FloatRingBuffer} from '../FloatRingBuffer';
-import {calculatePOS} from './POS';
+import type { WindowedPulseMethod } from '../pulse/projection/types.ts';
+import {POS} from '../pulse/projection/POS.ts';
 import {DEFAULT_PIPELINE_CONFIG, type RGB, type PipelineConfig} from '../types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -241,6 +242,7 @@ class RegionState {
 // ─── PulseProcessor Class ───────────────────────────────────────────────────
 export class PulseProcessor {
     private readonly config: PulseProcessorConfig;
+    private readonly method: WindowedPulseMethod;
 
     // Per-region state (RGB ring buffers + work arrays)
     private readonly regions: Record<string, RegionState> = {};
@@ -270,11 +272,13 @@ export class PulseProcessor {
     private lastFrameTime: number = -1; // Note slightly redundant - could just use region InterpolationStates for this?
 
     // Note Partial<> makes every property optional.
-    constructor(regionNames: string[] = ['region'], config?: Partial<PulseProcessorConfig>) {
+    constructor(regionNames: string[] = ['region'], config?: Partial<PulseProcessorConfig>, method?: WindowedPulseMethod) {
         this.config = { ...DEFAULT_PULSE_CONFIG, ...config }; // Config with sensible defaults if not used.
 
         const fps = this.config.sampleRate;
-        this.rgbCapacity = Math.ceil(fps * this.config.posWindowMultiplier);
+        // Use provided method or default to POS
+        this.method = method ?? new POS(fps, this.config.posWindowMultiplier);
+        this.rgbCapacity = this.method.windowSize;
         this.signalCapacity = Math.ceil(fps * this.config.signalWindowSeconds);
 
         // Initialize per-region state
@@ -576,7 +580,7 @@ export class PulseProcessor {
         state.unrollRGB(this.timeBuffer);
 
         // Run POS directly on raw samples — POS doesn't require uniform spacing
-        return calculatePOS({
+        return this.method.process({
             r: state.unrollR,
             g: state.unrollG,
             b: state.unrollB,
