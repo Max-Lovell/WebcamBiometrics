@@ -10,7 +10,7 @@ export interface RGBBufferConfig {
     sampleRate: number; // Target sample rate in Hz (defines grid interval when interpolating)
     windowSize: number; // RGB window size in samples (= method's windowSize)
     interpolate: boolean; // Whether to interpolate onto a uniform grid
-    maxConsecutiveMisses?: number; // Max consecutive missing frames before excluding a region. Default: 3
+    maxConsecutiveMisses: number; // Max consecutive missing frames before excluding a region. Default: 3 // TODO: make optional?
 }
 
 // Chronologically-ordered RGB window for one region, ready for a method
@@ -204,7 +204,7 @@ class RegionState {
 
 // ─── RGBBuffer Class ────────────────────────────────────────────────────────
 export class RGBBuffer {
-    private readonly config: Required<RGBBufferConfig>; // makes all fields required
+    private readonly config: RGBBufferConfig; // makes all fields required
     private readonly regions: Record<string, RegionState> = {};
 
     // Grid state (interpolation)
@@ -213,10 +213,7 @@ export class RGBBuffer {
     private lastFrameTime: number = -1; // Timestamp of the previous real camera frame
 
     constructor(regionNames: string[], config: RGBBufferConfig) {
-        this.config = {
-            maxConsecutiveMisses: 3,
-            ...config,
-        };
+        this.config = config;
 
         for (const name of regionNames) {
             this.regions[name] = new RegionState(config.windowSize);
