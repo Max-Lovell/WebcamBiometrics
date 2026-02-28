@@ -52,7 +52,7 @@ export interface HeartRateMonitorConfig extends PipelineConfig {
     // Projection method — name from registry (e.g., 'POS', 'CHROM'), or pass instance to constructor
     projectionMethods: string[],
     // PulseProcessor
-    posWindowMultiplier: number;
+    rgbWindowMultiplier: number;
     signalWindowSeconds: number;
     interpolate: boolean;
     // PeakEstimator
@@ -74,7 +74,7 @@ export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = { // TODO: this ne
     ...DEFAULT_PIPELINE_CONFIG,
     method: 'fused',
     projectionMethods: ['POS'],
-    posWindowMultiplier: 1.6,
+    rgbWindowMultiplier: 1.6,
     signalWindowSeconds: 15,
     interpolate: true,
     peakMinBPM: 50,
@@ -138,13 +138,13 @@ export class HeartRateMonitor {
         const methods = methodInstances ?? cfg.projectionMethods.map(name =>
             createMethod(name, {
                 sampleRate: cfg.sampleRate,
-                windowMultiplier: cfg.posWindowMultiplier,
+                windowMultiplier: cfg.rgbWindowMultiplier,
             })
         );
 
         this.pulse = new PulseProcessor(this.roi.regionNames, {
             sampleRate: cfg.sampleRate,
-            posWindowMultiplier: cfg.posWindowMultiplier,
+            posWindowMultiplier: cfg.rgbWindowMultiplier,
             signalWindowSeconds: cfg.signalWindowSeconds,
             interpolate: cfg.interpolate,
         }, methods);
