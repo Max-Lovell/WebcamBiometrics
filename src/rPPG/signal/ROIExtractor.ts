@@ -43,14 +43,16 @@ interface CachedMask {
 // ─── Default Face ROIs ──────────────────────────────────────────────────────
 
 // Default face regions for rPPG, selected to maximise skin visibility while avoiding hair, eyebrows, eyes, and mouth.
-// See: https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
+// canonical face mesh: https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
+// Face mesh points: https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png
+// optimal regions: https://www.nature.com/articles/s44325-024-00033-7 - NOTE not aligned perfectly, I went for maximising pixels
 export const FACE_ROIS: LandmarkerROIs = {
     // Center forehead — avoids hair and eyebrows
-    forehead: [9, 107, 66, 105, 63, 68, 54, 103, 67, 109, 10, 338, 297, 332, 284, 298, 293, 334, 296, 336],
+    forehead: [107, 66, 105, 63, 68, 54, 103, 67, 109, 10, 338, 297, 332, 284, 298, 293, 334, 296, 336, 285, 417, 351, 419, 197, 196, 122, 193, 55],
     // Left cheek (subject's left, indices > 200)
-    leftCheek: [350, 349, 348, 347, 346, 352, 376, 411, 427, 436, 426, 423, 331, 279, 429, 437, 343],
+    leftCheek: [350, 349, 348, 347, 346, 345, 352, 376, 411, 427, 436, 426, 423, 331, 279, 429, 437, 343],
     // Right cheek (subject's right, indices < 200)
-    rightCheek: [121, 120, 119, 118, 117, 123, 147, 187, 207, 216, 206, 203, 129, 49, 198, 217, 114],
+    rightCheek: [121, 120, 119, 118, 117, 116, 123, 147, 187, 207, 216, 206, 203, 129, 49, 198, 217, 114],
 };
 
 // ─── ROIExtractor Class ─────────────────────────────────────────────────────
