@@ -28,10 +28,13 @@
 import type { WindowedPulseMethod } from './projection/types';
 import { POS } from './projection/POS';
 import { CHROM } from './projection/CHROM.ts';
+import { Green } from './projection/Green.ts';
+import { GRGB } from './projection/GRGB.ts';
+import { PBV } from './projection/PBV.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-/** Configuration passed to method factories */
+// Configuration passed to method factories
 export interface MethodConfig {
     sampleRate: number;
     windowMultiplier?: number;  // Default varies by method
@@ -45,14 +48,17 @@ export type MethodFactory = (config: MethodConfig) => WindowedPulseMethod;
 const registry = new Map<string, MethodFactory>();
 
 // Register built-in methods
-registry.set('POS', (config) =>
-    new POS(config.sampleRate, config.windowMultiplier ?? 1.6)
-);
+const BUILTIN_METHODS: [string, new (sampleRate: number, windowMultiplier: number) => WindowedPulseMethod][] = [
+    ['POS',   POS],
+    ['CHROM', CHROM],
+    ['Green', Green],
+    ['GRGB',  GRGB],
+    ['PBV',   PBV],
+];
 
-registry.set('CHROM', (config) =>
-    new CHROM(config.sampleRate, config.windowMultiplier ?? 1.6)
-);
-
+for (const [name, Ctor] of BUILTIN_METHODS) {
+    registry.set(name, (config) => new Ctor(config.sampleRate, config.windowMultiplier ?? 1.6));
+}
 // ─── Public API ─────────────────────────────────────────────────────────────
 // Create a method instance by name
 export function createMethod(name: string, config: MethodConfig): WindowedPulseMethod {
