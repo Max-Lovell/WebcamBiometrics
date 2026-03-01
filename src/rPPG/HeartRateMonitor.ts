@@ -64,9 +64,10 @@ export interface HeartRateMonitorConfig {
 export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
     pipeline: { ...DEFAULT_PIPELINE_CONFIG },
     projectionMethods: ['POS'],
-    pulse: {
+    pulse: { // TODO: rename to BPV?
         posWindowMultiplier: 1.6,
         signalWindowSeconds: 15,
+        maxConsecutiveMisses: 3,
         interpolate: true,
     },
     peak: {
