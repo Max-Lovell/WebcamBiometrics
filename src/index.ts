@@ -159,15 +159,13 @@ tracker.onGazeResults = (result: BiometricsResult) => {
     }
     if (result.debug?.heartRateResult) {
         const heartRateResult = result.debug?.heartRateResult;
-        // console.log('H', heartRateResult);
-        // console.log('raw fused: ', heartRateResult.fusedSample, 'filtered: ', heartRateResult.filteredSample);
-        if (heartRateResult.fusedSample !== null && heartRateResult.fusedSample !== undefined) {
+        if (heartRateResult.signal.raw !== null && heartRateResult.signal.raw !== undefined) {
             drawPosGraph(
-                heartRateResult.fusedSample,
-                heartRateResult.filteredSample ?? null,
-                heartRateResult.raw.fft?.bpm ?? 0,
-                heartRateResult.raw.peak?.bpm ?? 0,
-                heartRateResult.peakDetected ?? false
+                heartRateResult.signal.raw,
+                heartRateResult.signal.filtered ?? null,
+                heartRateResult.estimators.fft?.bpm ?? 0,
+                heartRateResult.estimators.peak?.bpm ?? 0,
+                heartRateResult.signal.peakDetected ?? false
             );
         }
         const canvas = document.getElementById('output_canvas') as HTMLCanvasElement;
@@ -249,8 +247,8 @@ tracker.onGazeResults = (result: BiometricsResult) => {
         inferenceTimes.push(totalLatency);
         if(inferenceTimes.length > 30){
             console.log('INFERENCE TIMES: ', inferenceTimes.reduce(function (avg, value, _, { length }) {
-                    return avg + value / length;
-                }, 0).toFixed(1));
+                return avg + value / length;
+            }, 0).toFixed(1));
             inferenceTimes.length = 0
         }
         // console.log(`${totalLatency.toFixed(1)}, ${inferenceTime.toFixed(1)}, ${(totalLatency - inferenceTime).toFixed(1)}`)
