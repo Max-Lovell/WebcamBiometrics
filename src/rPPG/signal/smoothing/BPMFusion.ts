@@ -12,7 +12,7 @@
  */
 
 import type { PeakResult } from '../PeakEstimator';
-import type { FFTEstimate } from '../FFTEstimator';
+import type { FFTEstimate } from '../FFT/FFTEstimator.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,12 @@ export function fuseBPM(
     peak: PeakResult | null,
     fft: FFTEstimate | null,
 ): number | null {
+    // TODO: Consider:
+    //  harmonic/subharmonic detection in fusion overlaps with the harmonic rejection in findDominantFrequency.
+    //  Interval validation e.g. FFT says 70BPM and peak estimator measures a 400ms interval (150 BPM) = false peak.
+    //  Add hysteresis or lockout to stop flip-flopping between estimates
+    //  Bayesian prior on BPM not changing much for temporal continuity
+    //  Adaptive refractory period so peak estimation is 70% of median interval or FFT estimate
     if (method === 'peak') return peak?.bpm ?? null;
     if (method === 'fft') return fft?.bpm ?? null;
 
@@ -37,17 +43,19 @@ export function fuseBPM(
     const ratio = Math.abs(peak.bpm - fft.bpm) / fft.bpm;
 
     // Agreement (within 10%): trust FFT for precision
+    // TODO: 10% agreement threshold is fixed and symmetric. Could lower or use absolute tolerance (e.g +-5BPM)
     if (ratio < 0.10) return fft.bpm;
 
-    // FFT ≈ half of peak → FFT grabbed a subharmonic
+    // FFT~1/2 peak means FFT grabbed subharmonic
     const halfRatio = Math.abs(fft.bpm - peak.bpm / 2) / peak.bpm;
     if (halfRatio < 0.10) return peak.bpm;
 
-    // FFT ≈ double peak → FFT grabbed a harmonic
+    // FFT~2*peak means FFT grabbed harmonic
     const doubleRatio = Math.abs(fft.bpm - peak.bpm * 2) / peak.bpm;
     if (doubleRatio < 0.10) return peak.bpm;
 
     // Disagreement with no harmonic relationship: trust higher confidence
+    // TODO: Note confidence metrics aren't same scale. Could normalizing or weighting, or bias to FFT
     return peak.confidence > fft.confidence ? peak.bpm : fft.bpm;
 }
 

@@ -44,17 +44,17 @@ export type {
 } from './pulse/PulseProcessor.ts';
 
 // ─── Tier 3: Heart Rate Estimation ──────────────────────────────────────────
-export { FFTEstimator } from './signal/FFTEstimator';
+export { FFTEstimator } from './signal/FFT/FFTEstimator.ts';
 export type {
     FFTEstimatorConfig,
     FFTEstimate,
-} from './signal/FFTEstimator';
+} from './signal/FFT/FFTEstimator.ts';
 
 // ─── Signal Processing Primitives (advanced users) ──────────────────────────
 
 export { BandpassFilter, BiquadFilter } from './signal/BandpassFilter';
-export { fft, computeSpectrum, findDominantFrequency, hanningWindow } from './signal/FFT';
-export type { SpectrumResult, PeakResult } from './signal/FFT';
+export { fft, computeSpectrum, findDominantFrequency, hanningWindow } from './signal/FFT/FFT.ts';
+export type { SpectrumResult, DominantFrequencyResult } from './signal/FFT/FFT.ts';
 
 // ─── Smoothing ──────────────────────────────────────────────────────────────
 
