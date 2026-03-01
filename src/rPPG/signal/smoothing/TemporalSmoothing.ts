@@ -1,53 +1,23 @@
 /**
  * Temporal Smoothing Module
- *
  * Stabilises BPM estimates over time by filtering out transient outliers.
- * Sits after FFT-based BPM estimation in the pipeline:
- *
- *   POS → Bandpass → Window → FFT → Peak Detection → **Temporal Smoothing** → Display
- *
- * Provides three strategies:
- *   - MedianSmoother:   Rejects occasional outlier estimates (e.g., drops to 40 BPM).
- *   - EMASmoother:      Smooths jitter when estimates are noisy but not wildly wrong.
- *   - CombinedSmoother: Median → EMA chain for maximum stability.
- *
- * All implement the same BPMSmoother interface so they're interchangeable.
  */
 
-import { median } from '../utils/math.ts';
+import { median } from '../../utils/math.ts';
 
-// ─── Interface ──────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
+export type SmoothingStrategy = 'median' | 'ema' | 'combined' | 'none';
 
 export interface BPMSmoother {
-    /** Add a new raw BPM estimate and get back the smoothed value */
-    update(bpm: number): number;
-
-    /** Reset internal state (e.g., when tracking is lost) */
-    reset(): void;
-
-    /** Whether enough samples have been collected for a reliable smoothed estimate */
-    isReady(): boolean;
+    update(bpm: number): number; // Add a new raw BPM estimate and get back the smoothed value
+    reset(): void; // Reset internal state (e.g., when tracking is lost)
+    isReady(): boolean; // Whether enough samples have been collected for a reliable smoothed estimate
 }
 
 // ─── Median Smoother ────────────────────────────────────────────────────────
-
-/**
- * Median filter for BPM estimates.
- *
- * Why median over mean?
- *   If your last 5 BPM estimates are [78, 80, 42, 79, 81], the mean is 72 —
- *   pulled down by the outlier. The median is 79 — the outlier is simply ignored.
- *   This is exactly what you want for occasional drops to 40 BPM.
- *
- * Window size tradeoffs:
- *   - 3: Minimal latency, rejects single outliers
- *   - 5: Rejects up to 2 consecutive bad estimates (recommended starting point)
- *   - 7: Very stable but adds noticeable lag to real BPM changes
- *
- * @param windowSize - Number of recent estimates to consider (odd numbers work best)
- */
+// Median filter for BPM estimates.
 export class MedianSmoother implements BPMSmoother {
-    private readonly windowSize: number;
+    private readonly windowSize: number; // Should be range 3-7ish, accuracy/lag tradeoff
     private readonly buffer: number[] = [];
 
     constructor(windowSize: number = 5) {
@@ -78,22 +48,9 @@ export class MedianSmoother implements BPMSmoother {
 }
 
 // ─── EMA Smoother ───────────────────────────────────────────────────────────
-
-/**
- * Exponential Moving Average smoother for BPM estimates.
- *
- *   smoothed = α * newEstimate + (1 - α) * previousSmoothed
- *
- * Alpha tradeoffs:
- *   - 0.1: Very smooth, slow to respond to real changes
- *   - 0.3: Good balance (recommended starting point)
- *   - 0.6: Responsive but less smoothing
- *
- * Unlike median, EMA is *pulled* by outliers rather than rejecting them.
- * Best for jittery-but-not-wildly-wrong estimates.
- *
- * @param alpha - Smoothing factor between 0 and 1 (higher = more responsive)
- */
+// Exponential Moving Average smoother for BPM estimates.
+    // smoothed = α * newEstimate + (1 - α) * previousSmoothed
+    // Unlike median, EMA is *pulled* by outliers rather than rejecting them. Best for jittery-but-not-wildly-wrong estimates.
 export class EMASmoother implements BPMSmoother {
     private readonly alpha: number;
     private smoothed: number | null = null;
@@ -124,12 +81,8 @@ export class EMASmoother implements BPMSmoother {
 }
 
 // ─── Combined Smoother ──────────────────────────────────────────────────────
-
-/**
- * Median + EMA combo: raw BPM → Median (reject outliers) → EMA (smooth jitter)
- *
- * Probably overkill to start — try MedianSmoother alone first.
- */
+// Median + EMA combo: raw BPM → Median (reject outliers) → EMA (smooth jitter)
+// Probably overkill to start — try MedianSmoother alone first.
 export class CombinedSmoother implements BPMSmoother {
     private readonly median: MedianSmoother;
     private readonly ema: EMASmoother;
@@ -151,5 +104,28 @@ export class CombinedSmoother implements BPMSmoother {
 
     isReady(): boolean {
         return this.median.isReady();
+    }
+}
+
+// ─── Smoother Factory ───────────────────────────────────────────────────────
+// Create a BPMSmoother from a strategy name and parameters.
+export function createSmoother(
+    strategy: SmoothingStrategy,
+    windowSize: number,
+    alpha: number,
+): BPMSmoother {
+    switch (strategy) {
+        case 'median':
+            return new MedianSmoother(windowSize);
+        case 'ema':
+            return new EMASmoother(alpha);
+        case 'combined':
+            return new CombinedSmoother(windowSize, alpha);
+        case 'none':
+            return {
+                update: (bpm: number) => bpm,
+                reset: () => {},
+                isReady: () => true,
+            };
     }
 }

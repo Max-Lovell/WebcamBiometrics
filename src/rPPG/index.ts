@@ -58,8 +58,8 @@ export type { SpectrumResult, PeakResult } from './signal/FFT';
 
 // ─── Smoothing ──────────────────────────────────────────────────────────────
 
-export { MedianSmoother, EMASmoother, CombinedSmoother } from './signal/TemporalSmoothing';
-export type { BPMSmoother } from './signal/TemporalSmoothing';
+export { MedianSmoother, EMASmoother, CombinedSmoother } from './signal/smoothing/TemporalSmoothing.ts';
+export type { BPMSmoother } from './signal/smoothing/TemporalSmoothing.ts';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 

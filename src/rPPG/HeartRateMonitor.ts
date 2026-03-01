@@ -30,8 +30,10 @@ import type { PeakResult } from './signal/PeakEstimator';
 import { FFTEstimator } from './signal/FFTEstimator';
 import type { FFTEstimate } from './signal/FFTEstimator';
 
-import { MedianSmoother, EMASmoother, CombinedSmoother } from './signal/TemporalSmoothing';
-import type { BPMSmoother } from './signal/TemporalSmoothing';
+import { createSmoother } from './signal/smoothing/TemporalSmoothing.ts';
+import type { BPMSmoother, SmoothingStrategy } from './signal/smoothing/TemporalSmoothing.ts';
+import { fuseBPM, getFusionConfidence } from './signal/smoothing/BPMFusion';
+import type { EstimationMethod } from './signal/smoothing/BPMFusion';
 
 import type { PipelineConfig, RGB } from './types';
 import { DEFAULT_PIPELINE_CONFIG } from './types';
@@ -43,10 +45,6 @@ import { createMethod } from './pulse/registry';
 // import {CHROM} from "./pulse/projection/CHROM.ts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-export type EstimationMethod = 'peak' | 'fft' | 'fused';
-export type SmoothingStrategy = 'median' | 'ema' | 'combined' | 'none';
-
 export interface HeartRateMonitorConfig extends PipelineConfig {
     method: EstimationMethod;
     // Projection method — name from registry (e.g., 'POS', 'CHROM'), or pass instance to constructor
@@ -215,10 +213,10 @@ export class HeartRateMonitor {
         }
 
         // Fusion + Smoothing
-        const fusedBPM = this.fuseBPM(raw.peak ?? null, raw.fft ?? null);
+        const fusedBPM = fuseBPM(this.config.method, raw.peak ?? null, raw.fft ?? null);
         if (fusedBPM !== null) {
             this.lastBPM = this.smoother.update(fusedBPM);
-            this.lastConfidence = this.getConfidence(raw.peak ?? null, raw.fft ?? null);
+            this.lastConfidence = getFusionConfidence(this.config.method, raw.peak ?? null, raw.fft ?? null);
         }
 
         // Build result
@@ -251,99 +249,5 @@ export class HeartRateMonitor {
         this.smoother.reset();
         this.lastBPM = null;
         this.lastConfidence = 0;
-    }
-
-    // ─── Fusion Logic ───────────────────────────────────────────────────
-
-    /**
-     * Combine peak and FFT estimates into a single BPM value.
-     *
-     * Strategy depends on the configured method:
-     *   - 'peak': use peak estimate only
-     *   - 'fft': use FFT estimate only
-     *   - 'fused': cross-validate and pick the best
-     *
-     * The fusion logic for 'fused' mode:
-     *   1. If both agree (within 10%), trust FFT (more precise)
-     *   2. If FFT ≈ peak/2, FFT grabbed a subharmonic → trust peak
-     *   3. If FFT ≈ peak×2, FFT grabbed a harmonic → trust peak
-     *   4. Otherwise, trust whichever has higher confidence
-     *
-     * Why this works:
-     *   The pulse waveform has a sharp systolic peak and dicrotic notch,
-     *   producing a strong 2nd harmonic. FFT can lock onto this harmonic
-     *   (reporting 2× true HR) or its subharmonic. Peak counting is immune
-     *   because it counts actual pulses. So when they disagree by a factor
-     *   of 2, peak detection is almost certainly right.
-     */
-    private fuseBPM(peak: PeakResult | null, fft: FFTEstimate | null): number | null {
-        const method = this.config.method;
-
-        if (method === 'peak') return peak?.bpm ?? null;
-        if (method === 'fft') return fft?.bpm ?? null;
-
-        // Fused mode
-        if (!peak && !fft) return null;
-        if (!peak) return fft!.bpm;
-        if (!fft) return peak.bpm;
-
-        // Both available — cross-validate
-        const ratio = Math.abs(peak.bpm - fft.bpm) / fft.bpm;
-
-        // Agreement (within 10%): trust FFT for precision
-        if (ratio < 0.10) return fft.bpm;
-
-        // FFT ≈ half of peak → FFT grabbed a subharmonic
-        const halfRatio = Math.abs(fft.bpm - peak.bpm / 2) / peak.bpm;
-        if (halfRatio < 0.10) return peak.bpm;
-
-        // FFT ≈ double peak → FFT grabbed a harmonic
-        const doubleRatio = Math.abs(fft.bpm - peak.bpm * 2) / peak.bpm;
-        if (doubleRatio < 0.10) return peak.bpm;
-
-        // Disagreement with no harmonic relationship: trust higher confidence
-        return peak.confidence > fft.confidence ? peak.bpm : fft.bpm;
-    }
-
-    private getConfidence(peak: PeakResult | null, fft: FFTEstimate | null): number {
-        const method = this.config.method;
-
-        if (method === 'peak') return peak?.confidence ?? 0;
-        if (method === 'fft') return fft?.confidence ?? 0;
-
-        // Fused: return confidence from whichever we'd trust
-        if (!peak && !fft) return 0;
-        if (!peak) return fft!.confidence;
-        if (!fft) return peak.confidence;
-
-        // If they agree, use FFT's SNR (more informative than interval consistency)
-        const ratio = Math.abs(peak.bpm - fft.bpm) / fft.bpm;
-        if (ratio < 0.10) return fft.confidence;
-
-        // Otherwise, confidence from whichever we trusted
-        return peak.confidence > fft.confidence ? peak.confidence : fft.confidence;
-    }
-}
-
-// ─── Smoother Factory ───────────────────────────────────────────────────────
-
-function createSmoother(
-    strategy: SmoothingStrategy,
-    windowSize: number,
-    alpha: number
-): BPMSmoother {
-    switch (strategy) {
-        case 'median':
-            return new MedianSmoother(windowSize);
-        case 'ema':
-            return new EMASmoother(alpha);
-        case 'combined':
-            return new CombinedSmoother(windowSize, alpha);
-        case 'none':
-            return {
-                update: (bpm: number) => bpm,
-                reset: () => {},
-                isReady: () => true,
-            };
     }
 }
