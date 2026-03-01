@@ -159,7 +159,8 @@ tracker.onGazeResults = (result: BiometricsResult) => {
     }
     if (result.debug?.heartRateResult) {
         const heartRateResult = result.debug?.heartRateResult;
-        if (heartRateResult.signal.raw !== null && heartRateResult.signal.raw !== undefined) {
+
+        if (heartRateResult.signal.raw !== null) {
             drawPosGraph(
                 heartRateResult.signal.raw,
                 heartRateResult.signal.filtered ?? null,
