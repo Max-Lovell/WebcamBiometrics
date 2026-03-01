@@ -71,12 +71,13 @@ export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
         interpolate: true,
     },
     peak: {
-        minBPM: 50,
-        maxBPM: 150,
-        amplitudeThreshold: 0.2,
-        envelopeDecayRate: 500,
+        minBPM: 45,
+        maxBPM: 170,
+        amplitudeThreshold: 0.3,
+        envelopeDecayRate: 1000,
         maxIntervals: 8,
         minIntervals: 2,
+        envelopeFastDecayAfterMs: 2000, // No peak for Xs switch to fast decay
     },
     fft: {
         estimateInterval: 15,
@@ -174,7 +175,7 @@ export class HeartRateMonitor {
         this.bandpass = BandpassFilter.fromPipelineConfig(pipeline);
 
         this.peak = cfg.peak
-            ? new PeakEstimator({ ...pipeline, ...cfg.peak })
+            ? new PeakEstimator({ sampleRate: pipeline.sampleRate, ...cfg.peak })
             : null;
 
         this.fft = cfg.fft

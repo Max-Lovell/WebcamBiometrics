@@ -28,7 +28,9 @@ import { DEFAULT_PIPELINE_CONFIG } from '../types.ts';
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface PeakEstimatorConfig extends PipelineConfig {
-    amplitudeThreshold: number; // Fraction of adaptive envelope a peak must exceed (amplitudeThreshold × envelope). Default: 0.2
+    minBPM: number;  // Output clamp + lower bound for valid peaks
+    maxBPM: number;  // Refractory period derived from this
+    amplitudeThreshold: number; // Fraction of adaptive envelope a peak must exceed (amplitudeThreshold × envelope). Default: 0.3
     envelopeDecayRate: number;  // Envelope half-life in milliseconds. ~500ms means envelope halves every 500ms regardless of frame rate.
     maxIntervals: number;       // Max inter-peak intervals to keep for median. Default: 8
     minIntervals: number;       // Min intervals before producing an estimate. Default: 2
@@ -37,8 +39,10 @@ export interface PeakEstimatorConfig extends PipelineConfig {
 
 export const DEFAULT_PEAK_CONFIG: PeakEstimatorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
-    amplitudeThreshold: 0.2,
-    envelopeDecayRate: 500, // Half-life in ms — envelope halves every ~500ms
+    minBPM: 45,
+    maxBPM: 170,
+    amplitudeThreshold: 0.3,
+    envelopeDecayRate: 1000, // Half-life in ms — envelope halves every ~500ms
     maxIntervals: 8,
     minIntervals: 2,
     envelopeFastDecayAfterMs: 2000, // No peak for 2s switch to fast decay
