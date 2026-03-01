@@ -27,12 +27,12 @@ import { PulseProcessor } from './pulse/PulseProcessor.ts';
 import { PeakEstimator } from './signal/PeakEstimator';
 import type { PeakResult } from './signal/PeakEstimator';
 
-import { FFTEstimator } from './signal/FFTEstimator';
-import type { FFTEstimate } from './signal/FFTEstimator';
+import { FFTEstimator } from './signal/FFT/FFTEstimator.ts';
+import type { FFTEstimate } from './signal/FFT/FFTEstimator.ts';
 
 import { createSmoother } from './signal/smoothing/TemporalSmoothing.ts';
 import type { BPMSmoother, SmoothingStrategy } from './signal/smoothing/TemporalSmoothing.ts';
-import { fuseBPM, getFusionConfidence } from './signal/smoothing/BPMFusion';
+// import { fuseBPM, getFusionConfidence } from './signal/smoothing/BPMFusion';
 import type { EstimationMethod } from './signal/smoothing/BPMFusion';
 
 import type { PipelineConfig, RGB } from './types';
@@ -206,18 +206,21 @@ export class HeartRateMonitor {
             }
         }
 
-        // FFT estimation: pass raw fused signal (FFTEstimator handles rate limiting + filtering)
+        // FFT estimation - pass raw fused signal (FFTEstimator handles rate limiting + filtering)
         if (this.fft) {
             const fftResult = this.fft.update(this.pulse.getFusedSignal());
-            if (fftResult) raw.fft = fftResult; // Replace if new result available
+            if (fftResult) {
+                raw.fft = fftResult;
+                this.lastBPM = fftResult.bpm;
+            } // Replace if new result available
         }
 
-        // Fusion + Smoothing
-        const fusedBPM = fuseBPM(this.config.method, raw.peak ?? null, raw.fft ?? null);
-        if (fusedBPM !== null) {
-            this.lastBPM = this.smoother.update(fusedBPM);
-            this.lastConfidence = getFusionConfidence(this.config.method, raw.peak ?? null, raw.fft ?? null);
-        }
+        // Fusion + Smoothing - TODO: look into this, might be a nice step later.
+        // const fusedBPM = fuseBPM(this.config.method, raw.peak ?? null, raw.fft ?? null);
+        // if (fusedBPM !== null) {
+        //     this.lastBPM = this.smoother.update(fusedBPM);
+        //     this.lastConfidence = getFusionConfidence(this.config.method, raw.peak ?? null, raw.fft ?? null);
+        // }
 
         // Build result
         const regions: Record<string, RegionDetail> = {};
