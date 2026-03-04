@@ -11,10 +11,16 @@ import WebcamClient from '../Core/WebcamClient';
 import type { WebcamStatus } from '../Core/WebcamClient';
 import type { BiometricsResult, FrameMetadata } from './types';
 import type { VideoFrameData } from '../types';
-import type {HeartRateMonitorConfig} from "../rPPG";
-import type {TrackerConfig} from "../WebEyeTrack/WebEyeTrackProxy.ts";
+import type { HeartRateMonitorConfig } from "../rPPG";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
+export interface TrackerConfig {
+    maxPoints?: number;
+    clickTTL?: number;
+    modelPath?: string;
+    maxCalibPoints?: number;  // New Dual-Buffer config
+    maxClickPoints?: number;  // New Dual-Buffer config
+}
 
 export interface BiometricsClientConfig {
     // Config forwarded to the pipeline factory inside the worker
