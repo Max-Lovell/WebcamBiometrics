@@ -5,7 +5,8 @@ import WebEyeTrack from './WebEyeTrack.ts';
 // import { FACE_ROIS } from './utils/roiUtils';
 import { HeartRateMonitor } from '../rPPG';
 import FaceLandmarkerClient from '../Core/FaceLandmarkerClient.ts';
-import type { BiometricsResult } from "./types.ts";
+
+import type { BiometricsResult } from "../pipeline/types.ts";
 // import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
 // import * as tf from '@tensorflow/tfjs';
 
@@ -74,37 +75,28 @@ self.onmessage = async (e: MessageEvent) => {
         // Attach context to result so main thread can log
         context.trace.push({ step: 'worker_end', timestamp: performance.now() });
 
-        let summary;
         let heartRateResult;
         if (isFaceDetected) {
           // console.time('Heartrate')
           heartRateResult = heartRateMonitor.processFrame(frame, faceResult, context.videoTime); // Takes 1-2ms
           // console.timeEnd('Heartrate')
 
-          const facialTransformationMatrix = faceResult.facialTransformationMatrixes[0].data;
+          // const facialTransformationMatrix = faceResult.facialTransformationMatrixes[0].data;
           // vitalsResult = foreheadEstimator.processFrame(
           //     frame,
           //     foreheadPoints,
           //     context.videoTime
           // );
-          summary = {
-            faceDetected: true,
-            // TODO distance: a weighted split works best for now but figure out what is going wrong in other models
-            //  Note: mediapipe = center of head, WET = Nose bridge. MP=stable but heavy filtering, WET=unstable but jittery
-            //  MP uses 1.2cm iris, wet uses 15cm eye distance (might be slightly off just for me?)
-            //  Solution: bring MP estimate forward and up, stabilise and perform better estimate for WET faceWidth.
-            distance: ((facialTransformationMatrix[14] * -1) * .25) + (gazeResult.faceOrigin3D[2] * .75),
-            headRotation: [facialTransformationMatrix[2], facialTransformationMatrix[6], facialTransformationMatrix[10]],
-            headPosition: [facialTransformationMatrix[12], facialTransformationMatrix[13]*-1, facialTransformationMatrix[14]*-1],
-          };
-        } else {
-          // Fallback summary so the UI doesn't crash
-          summary = {
-            faceDetected: false,
-            distance: 0, // Or maintain the last known distance if you cache it
-            headRotation: [0, 0, 0],
-            headPosition: [0, 0, 0],
-          };
+          // summary = {
+          //   faceDetected: true,
+          //   // TODO distance: a weighted split works best for now but figure out what is going wrong in other models
+          //   //  Note: mediapipe = center of head, WET = Nose bridge. MP=stable but heavy filtering, WET=unstable but jittery
+          //   //  MP uses 1.2cm iris, wet uses 15cm eye distance (might be slightly off just for me?)
+          //   //  Solution: bring MP estimate forward and up, stabilise and perform better estimate for WET faceWidth.
+          //   distance: ((facialTransformationMatrix[14] * -1) * .25) + (gazeResult.faceOrigin3D[2] * .75),
+          //   headRotation: [facialTransformationMatrix[2], facialTransformationMatrix[6], facialTransformationMatrix[10]],
+          //   headPosition: [facialTransformationMatrix[12], facialTransformationMatrix[13]*-1, facialTransformationMatrix[14]*-1],
+          // };
         }
         // @ts-ignore
         // const gpuPatchTensor = await tracker.getEyePatchGPU(frame, faceResult);
@@ -113,14 +105,13 @@ self.onmessage = async (e: MessageEvent) => {
 
         // const newPatch = tracker.createNewRegion(frame, faceResult)
         // const newPatchMetrics = tracker.createNewRegionWithMetrics(frame, faceResult)
-
         const finalResult: BiometricsResult = {
-          faceLandmarker: faceResult,
-          webEyeTrack: gazeResult,
-          context: context,
-          summary: summary,
-          // gpuPixels: gpuPixels
-          debug: { heartRateResult}
+          frameMetadata: context,
+          face: faceResult
+              ? { faceLandmarkerResult: faceResult, detected: isFaceDetected ?? false }
+              : undefined,
+          gaze: gazeResult,
+          heart: heartRateResult,
         };
         // console.timeEnd('FRAME')
         self.postMessage({ type: 'stepResult', result: finalResult});

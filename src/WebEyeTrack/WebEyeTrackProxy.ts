@@ -1,6 +1,7 @@
-import type {BiometricsResult, TrackingContext, VideoFrameData} from "./types.ts";
+import type {VideoFrameData} from "../types.ts";
+import type {BiometricsResult, FrameMetadata} from "../pipeline/types.ts";
 
-interface TrackerConfig {
+export interface TrackerConfig {
   maxPoints?: number;
   clickTTL?: number;
   modelPath?: string;
@@ -103,7 +104,7 @@ export default class WebEyeTrackProxy {
     window.addEventListener('pointerdown', this.inputHandler);
   }
 
-  public async processFrame(frame: VideoFrameData, context: TrackingContext): Promise<boolean> {
+  public async processFrame(frame: VideoFrameData, context: FrameMetadata): Promise<boolean> {
     if (this._disposed) return false;
 
     // Simple backpressure: if worker is busy, drop the frame
