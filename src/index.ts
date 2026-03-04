@@ -1,156 +1,245 @@
 import type {BiometricsResult} from "./pipeline/types.ts";
 import { BiometricsClient } from './pipeline/BiometricsClient';
 
-// After the imports, add a simple graph
+// ─── POS Graph ──────────────────────────────────────────────────────────────
 const posGraph = document.getElementById('pos_graph') as HTMLCanvasElement;
 const bpmDisplay = document.getElementById('bpm_display') as HTMLDivElement;
 posGraph.width = 600;
 posGraph.height = 200;
 const posCtx = posGraph.getContext('2d')!;
-const posHistory: number[] = [];
-const filteredHistory: number[] = [];
+
 const POS_MAX_POINTS = 300;
-const peakFrames: number[] = []; // absolute frame numbers where peaks occurred
+
+// Ring buffers instead of shifting arrays
+const posHistory = new Float64Array(POS_MAX_POINTS);
+const filteredHistory = new Float64Array(POS_MAX_POINTS);
+let posHead = 0;       // write index for posHistory
+let posCount = 0;      // how many values written so far
+let filtHead = 0;      // write index for filteredHistory
+let filtCount = 0;     // how many values written so far
+
+// Peak tracking — ring buffer of frame numbers
+const MAX_PEAKS = 64;
+const peakFramesBuf = new Int32Array(MAX_PEAKS);
+let peakHead = 0;
+let peakCount = 0;
 let frameCounter = 0;
+
+function ringPush(buf: Float64Array | Int32Array, head: number, count: number, value: number): [number, number] {
+    buf[head] = value;
+    return [(head + 1) % buf.length, Math.min(count + 1, buf.length)];
+}
+
+function ringGet(buf: Float64Array | Int32Array, head: number, count: number, i: number): number {
+    // i=0 is oldest, i=count-1 is newest
+    const start = (head - count + buf.length) % buf.length;
+    return buf[(start + i) % buf.length];
+}
 
 function drawPosGraph(signal: number, filteredSignal: number | null, bpm: number | null, peakBPM: number | null, peakDetected: boolean) {
     bpmDisplay.innerText = bpm && bpm > 0 ? `${Math.round(bpm)} BPM` : "Processing...";
-    bpmDisplay.innerText += peakBPM ? ` | ${Math.round(peakBPM)}` : '';
-    frameCounter++;
-    if (peakDetected) peakFrames.push(frameCounter);
+    if (peakBPM) bpmDisplay.innerText += ` | ${Math.round(peakBPM)}`;
 
-    posHistory.push(signal);
-    if (posHistory.length > POS_MAX_POINTS) posHistory.shift();
-    if (filteredSignal !== null) {
-        filteredHistory.push(filteredSignal);
-        if (filteredHistory.length > POS_MAX_POINTS) filteredHistory.shift();
+    frameCounter++;
+    if (peakDetected) {
+        [peakHead, peakCount] = ringPush(peakFramesBuf, peakHead, peakCount, frameCounter);
     }
-    if (posHistory.length < 2) return;
+
+    [posHead, posCount] = ringPush(posHistory, posHead, posCount, signal);
+    if (filteredSignal !== null) {
+        [filtHead, filtCount] = ringPush(filteredHistory, filtHead, filtCount, filteredSignal);
+    }
+
+    if (posCount < 2) return;
 
     const w = posGraph.width, h = posGraph.height;
     posCtx.clearRect(0, 0, w, h);
 
-    // Shared scale across both signals
-    const allValues = [...posHistory, ...filteredHistory];
-    let min = Math.min(...allValues);
-    let max = Math.max(...allValues);
+    // Compute min/max in one pass over both buffers — no array spread
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < posCount; i++) {
+        const v = ringGet(posHistory, posHead, posCount, i);
+        if (v < min) min = v;
+        if (v > max) max = v;
+    }
+    for (let i = 0; i < filtCount; i++) {
+        const v = ringGet(filteredHistory, filtHead, filtCount, i);
+        if (v < min) min = v;
+        if (v > max) max = v;
+    }
     let range = max - min || 1;
-    min -= range * 0.1; max += range * 0.1; range = max - min;
+    min -= range * 0.1;
+    max += range * 0.1;
+    range = max - min;
 
     // Raw POS (green)
-    drawTrace(posHistory, 'green', w, h, min, range);
-    // Filtered POS (cyan)
-    if (filteredHistory.length >= 2) {
-        drawTrace(filteredHistory, 'red', w, h, min, range);
+    drawRingTrace(posHistory, posHead, posCount, 'green', w, h, min, range);
+    // Filtered POS (red)
+    if (filtCount >= 2) {
+        drawRingTrace(filteredHistory, filtHead, filtCount, 'red', w, h, min, range);
     }
 
-    const visibleStart = frameCounter - Math.min(filteredHistory.length, POS_MAX_POINTS);
-    posCtx.fillStyle = '#ffff00';
-    for (let i = peakFrames.length - 1; i >= 0; i--) {
-        const age = frameCounter - peakFrames[i];
-        if (age >= POS_MAX_POINTS) { peakFrames.splice(0, i + 1); break; }
+    // Draw peak markers
+    if (filtCount > 0) {
+        posCtx.fillStyle = '#ffff00';
+        const peakOffset = POS_MAX_POINTS - filtCount;
+        for (let i = 0; i < peakCount; i++) {
+            const peakFrame = ringGet(peakFramesBuf, peakHead, peakCount, i);
+            const age = frameCounter - peakFrame;
+            if (age >= POS_MAX_POINTS) continue;
 
-        const idx = filteredHistory.length - 1 - age;
-        if (idx < 0 || idx >= filteredHistory.length) continue;
+            const idx = filtCount - 1 - age;
+            if (idx < 0 || idx >= filtCount) continue;
 
-        const x = (idx / (POS_MAX_POINTS - 1)) * w;
-        const y = h - ((filteredHistory[idx] - min) / range) * h;
-        posCtx.beginPath();
-        posCtx.arc(x, y, 4, 0, Math.PI * 2);
-        posCtx.fill();
+            const x = ((idx + peakOffset) / (POS_MAX_POINTS - 1)) * w;
+            const val = ringGet(filteredHistory, filtHead, filtCount, idx);
+            const y = h - ((val - min) / range) * h;
+            posCtx.beginPath();
+            posCtx.arc(x, y, 4, 0, Math.PI * 2);
+            posCtx.fill();
+        }
     }
 }
 
-function drawTrace(history: number[], color: string, w: number, h: number, min: number, range: number) {
+function drawRingTrace(
+    buf: Float64Array, head: number, count: number,
+    color: string, w: number, h: number, min: number, range: number
+) {
     posCtx.strokeStyle = color;
     posCtx.lineWidth = 2;
     posCtx.beginPath();
-    history.forEach((val, i) => {
-        const x = (i / (POS_MAX_POINTS - 1)) * w;
-        const y = h - ((val - min) / range) * h;
+    // Offset so newest value is always at the right edge
+    const offset = POS_MAX_POINTS - count;
+    for (let i = 0; i < count; i++) {
+        const x = ((i + offset) / (POS_MAX_POINTS - 1)) * w;
+        const y = h - ((ringGet(buf, head, count, i) - min) / range) * h;
         if (i === 0) posCtx.moveTo(x, y); else posCtx.lineTo(x, y);
-    });
+    }
     posCtx.stroke();
 }
 
+// ─── Cursor ─────────────────────────────────────────────────────────────────
 const cursor = document.getElementById('cursor') as HTMLDivElement;
-// Setup results callback
 
-function getTimeDiff(arr: object[], t1: string, t2: string): number {
-    // @ts-ignore
-    const start = arr.find((t: { step: string; }) => t.step === t1)?.timestamp;
-    // @ts-ignore
-    const end = arr.find((t: { step: string; }) => t.step === t2)?.timestamp;
-    return end - start;
-}
+// ─── Timing helpers ─────────────────────────────────────────────────────────
+// Ring buffer for frame times — avoids growing/clearing arrays
+const FRAME_TIME_BUF_SIZE = 100;
+const frameTimes = new Float64Array(FRAME_TIME_BUF_SIZE);
+let ftHead = 0;
+let ftCount = 0;
+let ftMin = Infinity;
+let ftMax = -Infinity;
+let ftSum = 0;
 
-const inferenceTimes: number[] = []
-
-const showResults = (result: BiometricsResult) => {
-    if(!result.face.detected) return;
-    // console.log("Result:", result);
-    // WebEyeTrack - TODO: add to helper file in WebEyeTrack, pass in window, document, webeyetrack results, cursor element
-    const normPog = result.gaze.normPog
-    const x = (normPog[0] + 0.5) * (document.documentElement.clientWidth || window.innerWidth);
-    const y = (normPog[1] + 0.5) * (document.documentElement.clientHeight || window.innerHeight);
-    cursor.style.left = `${x}px`;
-    cursor.style.top = `${y}px`;
-    cursor.style.backgroundColor = result.gaze.gazeState === 'closed' ? 'gray' : 'red';
-
-
-    // --- DEBUG VISUALIZATION ---
-
-    // 1. Draw Existing CPU Patch (It's already an ImageData object)
-    const cpuPatch = result.gaze.eyePatch;
-    if (cpuPatch) {
-        const cpuCanvas = document.getElementById('cpu_patch') as HTMLCanvasElement;
-        const cpuCtx = cpuCanvas.getContext('2d');
-        // Clear and draw
-        cpuCanvas.width = cpuPatch.width;
-        cpuCanvas.height = cpuPatch.height;
-        cpuCtx?.putImageData(cpuPatch, 0, 0);
+function pushFrameTime(t: number) {
+    // If buffer is full, subtract the oldest value before overwriting
+    if (ftCount === FRAME_TIME_BUF_SIZE) {
+        const oldest = frameTimes[ftHead];
+        ftSum -= oldest;
     }
+    frameTimes[ftHead] = t;
+    ftSum += t;
+    ftHead = (ftHead + 1) % FRAME_TIME_BUF_SIZE;
+    if (ftCount < FRAME_TIME_BUF_SIZE) ftCount++;
 
-    // 2. Draw New GPU Patch (Coming as raw pixels)
-    // @ts-ignore
-    if (result.gpuPixels) {
-        const gpuCanvas = document.getElementById('gpu_patch') as HTMLCanvasElement;
-        const gpuCtx = gpuCanvas.getContext('2d');
-
-
-        // Create ImageData from the raw pixel array
-        const gpuImgData = new ImageData(
-            new Uint8ClampedArray(result.gpuPixels),
-            512, 128 // Ensure these match your getEyePatchGPU output dimensions
-        );
-
-        gpuCanvas.width = 512;
-        gpuCanvas.height = 128;
-        gpuCtx?.putImageData(gpuImgData, 0, 0);
-    }
-// @ts-ignore
-    if (result.debug?.newPatch) {
-        // console.log(result.debug?.newPatch)
-        const canvas = document.getElementById('output_canvas') as HTMLCanvasElement;
-        const ctx = canvas.getContext('2d');
-
-        if (ctx) {
-            if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
-                canvas.width = canvas.clientWidth;
-                canvas.height = canvas.clientHeight;
-            }
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = 'cyan';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            // @ts-ignore
-            const pts = result.debug.newPatch;
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            pts.forEach((p: number[]) => ctx.lineTo(p[0], p[1]));
-            ctx.closePath();
-            ctx.stroke();
+    // Recompute min/max only when buffer wraps (every 100 frames)
+    // Otherwise maintain running values
+    if (t < ftMin) ftMin = t;
+    if (t > ftMax) ftMax = t;
+    if (ftHead === 0) {
+        // Full wrap — recompute exact min/max
+        ftMin = Infinity;
+        ftMax = -Infinity;
+        for (let i = 0; i < ftCount; i++) {
+            if (frameTimes[i] < ftMin) ftMin = frameTimes[i];
+            if (frameTimes[i] > ftMax) ftMax = frameTimes[i];
         }
     }
+}
+
+// ─── Inference times ────────────────────────────────────────────────────────
+const INFERENCE_BUF_SIZE = 30;
+const inferenceTimes = new Float64Array(INFERENCE_BUF_SIZE);
+let infHead = 0;
+let infCount = 0;
+let infSum = 0;
+
+// ─── Canvas refs (cached once) ──────────────────────────────────────────────
+const cpuCanvas = document.getElementById('cpu_patch') as HTMLCanvasElement;
+const cpuCtx = cpuCanvas.getContext('2d');
+const gpuCanvas = document.getElementById('gpu_patch') as HTMLCanvasElement;
+const gpuCtx = gpuCanvas.getContext('2d');
+const outputCanvas = document.getElementById('output_canvas') as HTMLCanvasElement;
+const outputCtx = outputCanvas.getContext('2d')!;
+
+// Track output canvas size to avoid unnecessary resets
+let lastOutputW = 0;
+let lastOutputH = 0;
+
+function syncOutputCanvas(): void {
+    const cw = outputCanvas.clientWidth;
+    const ch = outputCanvas.clientHeight;
+    if (lastOutputW !== cw || lastOutputH !== ch) {
+        outputCanvas.width = cw;
+        outputCanvas.height = ch;
+        lastOutputW = cw;
+        lastOutputH = ch;
+    }
+}
+
+// ─── Results callback ───────────────────────────────────────────────────────
+const showResults = (result: BiometricsResult) => {
+    if (!result.face?.detected) return;
+
+    // ── Gaze cursor ─────────────────────────────────────────────────
+    const normPog = result.gaze?.normPog;
+    if (normPog) {
+        const vw = document.documentElement.clientWidth || window.innerWidth;
+        const vh = document.documentElement.clientHeight || window.innerHeight;
+        cursor.style.left = `${(normPog[0] + 0.5) * vw}px`;
+        cursor.style.top = `${(normPog[1] + 0.5) * vh}px`;
+        cursor.style.backgroundColor = result.gaze!.gazeState === 'closed' ? 'gray' : 'red';
+    }
+
+    // ── CPU eye patch ───────────────────────────────────────────────
+    const cpuPatch = result.gaze?.eyePatch;
+    if (cpuPatch && cpuCtx) {
+        cpuCanvas.width = cpuPatch.width;
+        cpuCanvas.height = cpuPatch.height;
+        cpuCtx.putImageData(cpuPatch, 0, 0);
+    }
+
+    // ── GPU eye patch ───────────────────────────────────────────────
+    // @ts-ignore
+    if (result.gpuPixels && gpuCtx) {
+        const gpuImgData = new ImageData(
+            // @ts-ignore
+            new Uint8ClampedArray(result.gpuPixels),
+            512, 128
+        );
+        gpuCanvas.width = 512;
+        gpuCanvas.height = 128;
+        gpuCtx.putImageData(gpuImgData, 0, 0);
+    }
+
+    // ── Output canvas — clear once, draw all overlays ───────────────
+    syncOutputCanvas();
+    outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+
+    // @ts-ignore — debug new patch outline
+    if (result.debug?.newPatch) {
+        // @ts-ignore
+        const pts = result.debug.newPatch;
+        outputCtx.strokeStyle = 'cyan';
+        outputCtx.lineWidth = 2;
+        outputCtx.beginPath();
+        outputCtx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) outputCtx.lineTo(pts[i][0], pts[i][1]);
+        outputCtx.closePath();
+        outputCtx.stroke();
+    }
+
+    // ── Heart rate regions + graph ──────────────────────────────────
     if (result.heart) {
         const heartRateResult = result.heart;
 
@@ -163,120 +252,75 @@ const showResults = (result: BiometricsResult) => {
                 heartRateResult.signal.peakDetected ?? false
             );
         }
-        const canvas = document.getElementById('output_canvas') as HTMLCanvasElement;
-        const ctx = canvas.getContext('2d');
-        if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
-        }
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = 'purple';
-        ctx.lineWidth = 2;
 
-        // console.log(heartRateResult.posH);
+        // Draw heart regions on output canvas (already cleared above)
+        outputCtx.strokeStyle = 'purple';
+        outputCtx.lineWidth = 2;
 
-        // Iterate over regions object
-        Object.entries(heartRateResult.regions).forEach(([regionName, regionData]) => {
+        const regions = heartRateResult.regions;
+        for (const regionName in regions) {
+            const regionData = regions[regionName];
             const polygon = regionData.polygon;
-            if (polygon.length === 0) return;
-            ctx.beginPath();
-            ctx.moveTo(polygon[0].x, polygon[0].y);
-            polygon.forEach((p) => ctx.lineTo(p.x, p.y));
-            ctx.closePath();
+            if (polygon.length === 0) continue;
+            outputCtx.beginPath();
+            outputCtx.moveTo(polygon[0].x, polygon[0].y);
+            for (let i = 1; i < polygon.length; i++) outputCtx.lineTo(polygon[i].x, polygon[i].y);
+            outputCtx.closePath();
 
             const posH = regionData.pulse ?? 0;
-            // Normalize: -0.008 (transparent) → +0.003 (fully opaque)
             const alpha = Math.min(1, Math.max(0, (posH + 0.009) / 0.015));
-            ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
-            ctx.fill();
-        });
+            outputCtx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
+            outputCtx.fill();
+        }
     }
 
-
+    // @ts-ignore — debug patch metrics outline
     if (result.debug?.newPatchMetrics) {
-        // console.log(result.debug?.newPatchMetrics)
-        const canvas = document.getElementById('output_canvas') as HTMLCanvasElement;
-        const ctx = canvas.getContext('2d');
-
-        if (ctx) {
-            if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
-                canvas.width = canvas.clientWidth;
-                canvas.height = canvas.clientHeight;
-            }
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = 'purple';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            // @ts-ignore
-            const pts = result.debug.newPatchMetrics;
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            pts.forEach((p: number[]) => ctx.lineTo(p[0], p[1]));
-            ctx.closePath();
-            ctx.stroke();
-        }
-    }
-
-    // //// DEBUGGING METRIC TRANSFORMS
-    const W_fo3d = result.gaze.faceOrigin3D
-    // const W_HV = result.gaze.headVector
-    // const FL_FAT = result.faceLandmarker.facialTransformationMatrixes[0].data
-    //
-    // console.log(`
-    // Vector:
-    //     FL ${FL_FAT[2]},${FL_FAT[6]},${FL_FAT[10]},
-    //     WET ${W_HV}.
-    // Origin:
-    //     FL ${FL_FAT[12]},${FL_FAT[13]},${FL_FAT[14]},
-    //     WET ${W_fo3d}.
-    // `)
-    // console.log(result.summary.headPosition[2].toFixed(1), W_fo3d[2].toFixed(1), ((((result.summary.headPosition[2]+W_fo3d[2])/2)+W_fo3d[2])/2).toFixed(1))
-    // Tracking performance
-    const now = performance.now();
-    // Calculate Latency
-    const ctx = (result as any).context;
-    if (ctx && ctx.trace) {
-        const t0 = ctx.trace[0].timestamp;
-        const totalLatency = now - t0;
-        // Find worker time if available
-        // const inferenceTime = getTimeDiff(ctx.trace,'worker_start', 'worker_end')
-        inferenceTimes.push(totalLatency);
-        if(inferenceTimes.length > 30){
-            console.log('INFERENCE TIMES: ', inferenceTimes.reduce(function (avg, value, _, { length }) {
-                return avg + value / length;
-            }, 0).toFixed(1));
-            inferenceTimes.length = 0
-        }
-        // console.log(`${totalLatency.toFixed(1)}, ${inferenceTime.toFixed(1)}, ${(totalLatency - inferenceTime).toFixed(1)}`)
-
-        // console.log(`⏱
-        //     Total: ${totalLatency.toFixed(1)}ms |
-        //     Inference Total: ${inferenceTime.toFixed(1)}ms |
-        //     FaceLandmarker: ${getTimeDiff(ctx.trace,'facelandmarker_start', 'facelandmarker_end').toFixed(1)}ms |
-        //     Webeyetrack: ${getTimeDiff(ctx.trace,'webeyetrack_start', 'webeyetrack_end').toFixed(1)}ms |
-        //     Overhead: ${(totalLatency - inferenceTime).toFixed(1)}ms
-        // `);
+        // @ts-ignore
+        const pts = result.debug.newPatchMetrics;
+        outputCtx.strokeStyle = 'purple';
+        outputCtx.lineWidth = 2;
+        outputCtx.beginPath();
+        outputCtx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) outputCtx.lineTo(pts[i][0], pts[i][1]);
+        outputCtx.closePath();
+        outputCtx.stroke();
     }
 };
 
+// ─── Client setup ───────────────────────────────────────────────────────────
 const client = new BiometricsClient('webcam');
-const times: number[] = []
-function average(nums: number[]): number {
-    return nums.reduce((a, b) => (a + b)) / nums.length;
-}
+
 client.onResult = (result) => {
-    result.frameMetadata.trace.push({ step: 'frame_recieved', timestamp: performance.now() })
-    const time = result.frameMetadata.trace[result.frameMetadata.trace.length-1].timestamp-result.frameMetadata.trace[0].timestamp
-    times.push(time)
-    // console.log(result.frameMetadata.trace)
-    console.log('Frame time:', Math.round(average(times)));
-    if(times.length>100) times.length = 0
-    showResults(result)
-    // if (result.gaze) {
-    //     // draw gaze point, update UI, etc.
-    // }
-    // if (result.heart?.status === 'ready') {
-    //     // show BPM
-    // }
+    // console.log({result});
+    result.frameMetadata.trace.push({ step: 'frame_recieved', timestamp: performance.now() });
+    const trace = result.frameMetadata.trace;
+    // console.log({trace});
+    const time = trace[trace.length - 1].timestamp - trace[0].timestamp;
+
+    pushFrameTime(time);
+    if (ftCount > 0) {
+        console.log('Frame time:', Math.round(ftSum / ftCount), Math.floor(ftMin), '-', Math.ceil(ftMax));
+    }
+
+    // Inference logging
+    const ctx = (result as any).context;
+    if (ctx?.trace) {
+        const totalLatency = performance.now() - ctx.trace[0].timestamp;
+        if (infCount === INFERENCE_BUF_SIZE) {
+            infSum -= inferenceTimes[infHead];
+        }
+        inferenceTimes[infHead] = totalLatency;
+        infSum += totalLatency;
+        infHead = (infHead + 1) % INFERENCE_BUF_SIZE;
+        if (infCount < INFERENCE_BUF_SIZE) infCount++;
+
+        if (infHead === 0 && infCount === INFERENCE_BUF_SIZE) {
+            console.log('INFERENCE TIMES:', (infSum / INFERENCE_BUF_SIZE).toFixed(1));
+        }
+    }
+
+    showResults(result);
 };
 
 client.onWebcamStatus = (status, msg) => {
