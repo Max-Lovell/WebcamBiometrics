@@ -1,20 +1,6 @@
-import type {Matrix, FaceLandmarkerResult} from "@mediapipe/tasks-vision";
+import type {Matrix} from "@mediapipe/tasks-vision";
 
-// export type Point = [number, number];
-export interface RGBSample {
-  r: number;
-  g: number;
-  b: number;
-}
-
-export type Point = number[];
-
-export type VideoFrameData = VideoFrame | ImageData | ImageBitmap;
-
-export enum TrackingStatus {
-  FAILED = 0,
-  SUCCESS = 1,
-}
+export type Point = number[]; // TODO: refactor usages to work in {x,y} and then move to top level types.ts
 
 export interface WebEyeTrackResult {
   // Preprocessing
@@ -30,43 +16,6 @@ export interface WebEyeTrackResult {
   // Meta data
   durations: Record<string, number>; // seconds
   timestamp: number; // milliseconds
-}
-
-export interface RPPGResult {
-  //rPPG
-  roiSignals?: {
-    forehead: RGBSample;
-    leftCheek: RGBSample;
-    rightCheek: RGBSample;
-  };
-}
-
-export interface TrackingContext {
-  videoTime: number; // metadata.mediaTime (rVFC) OR performance.now() (fallback)
-  systemTime: number; // Source: metadata.expectedDisplayTime (rVFC) OR performance.now() (fallback)
-  frameId: number; // Source: metadata.presentedFrames (rVFC) OR incrementing counter (fallback)
-  rawMetadata?: VideoFrameCallbackMetadata; // raw data for debugging (optional incase fallback)
-  trace?: Array<{ step: string; timestamp: number }>;
-}
-
-export interface summaryResult {
-  faceDetected: boolean;
-  headRotation: Array<number>; // X,Y,Z from faceLandmarker
-  headPosition: Array<number>;
-  distance: number;
-}
-
-export interface Debug {
-
-}
-
-export interface BiometricsResult {
-  faceLandmarker: FaceLandmarkerResult | null; // Note should this be nullable?
-  webEyeTrack: WebEyeTrackResult;
-  // rPPG: RPPGResult;
-  context: TrackingContext;
-  summary?: summaryResult;
-  debug?: Debug;
 }
 
 
