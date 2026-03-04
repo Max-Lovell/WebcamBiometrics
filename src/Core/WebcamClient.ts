@@ -1,11 +1,12 @@
-import type {TrackingContext, VideoFrameData} from '../WebEyeTrack/types.ts'; // Note move these up?
+import type {VideoFrameData} from "../types.ts";
+import type {FrameMetadata} from "../pipeline/types.ts"; // Note move these up?
 
 export type WebcamStatus = 'active' | 'inactive' | 'waiting' | 'error';
 
 export default class WebcamClient {
     private videoElement: HTMLVideoElement;
     private stream?: MediaStream;
-    private frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>; // holds function to run on captured frames
+    private frameCallback?: (frame: VideoFrameData, context: FrameMetadata) => Promise<void>; // holds function to run on captured frames
 
     // State
     private isRunning: boolean = false;  // Flag to kill the loop
@@ -36,7 +37,7 @@ export default class WebcamClient {
         navigator.mediaDevices.addEventListener('devicechange', this.deviceChangeListener);
     }
 
-    async startWebcam(frameCallback?: (frame: VideoFrameData, context: TrackingContext) => Promise<void>): Promise<void> {
+    async startWebcam(frameCallback?: (frame: VideoFrameData, context: FrameMetadata) => Promise<void>): Promise<void> {
         this.shouldBeRunning = true;
         if (frameCallback) this.frameCallback = frameCallback;
 
@@ -187,7 +188,7 @@ export default class WebcamClient {
                 const frame = result.value as VideoFrame;
                 try {
                     if (this.frameCallback) {
-                        const context: TrackingContext = {
+                        const context: FrameMetadata = {
                             videoTime: frame.timestamp / 1000, // micro to milli
                             systemTime: performance.now(),
                             frameId: 0, // Not available in this API
@@ -221,7 +222,7 @@ export default class WebcamClient {
             if (!this.isRunning) return;
 
             if (this.frameCallback) {
-                const context: TrackingContext = {
+                const context: FrameMetadata = {
                     // Note consider returning 0 if 0 and handling || .001 somewhere downstream...
                     videoTime: (metadata?.mediaTime || this.videoElement.currentTime) * 1000 || 0.0001,
                     systemTime: now,
@@ -230,7 +231,7 @@ export default class WebcamClient {
                 };
                 // createImageBitmap is async but much faster than getImageData as it stays on GPU often
                     // previous approach: const imageData = this.convertVideoFrameToImageData(this.videoElement);
-                const bitmap = await createImageBitmap(this.videoElement);
+                const bitmap = await createImageBitmap(this.videoElement); // TODO: keep in worker??
                 try {
                     await this.frameCallback(bitmap, context);
                 } finally {
