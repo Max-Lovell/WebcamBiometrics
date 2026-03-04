@@ -1,6 +1,5 @@
-import WebcamClient from './Core/WebcamClient.ts';
-import WebEyeTrackProxy from './WebEyeTrack/WebEyeTrackProxy.ts';
-import type { BiometricsResult } from './WebEyeTrack';
+import type {BiometricsResult} from "./pipeline/types.ts";
+import { BiometricsClient } from './pipeline/BiometricsClient';
 
 // After the imports, add a simple graph
 const posGraph = document.getElementById('pos_graph') as HTMLCanvasElement;
@@ -73,11 +72,6 @@ function drawTrace(history: number[], color: string, w: number, h: number, min: 
     });
     posCtx.stroke();
 }
-// 1. Initialize the passive tracker
-const tracker = new WebEyeTrackProxy({
-    clickTTL: 30,
-    maxPoints: 10
-});
 
 const cursor = document.getElementById('cursor') as HTMLDivElement;
 // Setup results callback
@@ -92,22 +86,22 @@ function getTimeDiff(arr: object[], t1: string, t2: string): number {
 
 const inferenceTimes: number[] = []
 
-tracker.onGazeResults = (result: BiometricsResult) => {
-    if(!result.summary.faceDetected) return;
+const showResults = (result: BiometricsResult) => {
+    if(!result.face.detected) return;
     // console.log("Result:", result);
     // WebEyeTrack - TODO: add to helper file in WebEyeTrack, pass in window, document, webeyetrack results, cursor element
-    const normPog = result.webEyeTrack.normPog
+    const normPog = result.gaze.normPog
     const x = (normPog[0] + 0.5) * (document.documentElement.clientWidth || window.innerWidth);
     const y = (normPog[1] + 0.5) * (document.documentElement.clientHeight || window.innerHeight);
     cursor.style.left = `${x}px`;
     cursor.style.top = `${y}px`;
-    cursor.style.backgroundColor = result.webEyeTrack.gazeState === 'closed' ? 'gray' : 'red';
+    cursor.style.backgroundColor = result.gaze.gazeState === 'closed' ? 'gray' : 'red';
 
 
     // --- DEBUG VISUALIZATION ---
 
     // 1. Draw Existing CPU Patch (It's already an ImageData object)
-    const cpuPatch = result.webEyeTrack.eyePatch;
+    const cpuPatch = result.gaze.eyePatch;
     if (cpuPatch) {
         const cpuCanvas = document.getElementById('cpu_patch') as HTMLCanvasElement;
         const cpuCtx = cpuCanvas.getContext('2d');
@@ -157,8 +151,8 @@ tracker.onGazeResults = (result: BiometricsResult) => {
             ctx.stroke();
         }
     }
-    if (result.debug?.heartRateResult) {
-        const heartRateResult = result.debug?.heartRateResult;
+    if (result.heart) {
+        const heartRateResult = result.heart;
 
         if (heartRateResult.signal.raw !== null) {
             drawPosGraph(
@@ -223,8 +217,8 @@ tracker.onGazeResults = (result: BiometricsResult) => {
     }
 
     // //// DEBUGGING METRIC TRANSFORMS
-    const W_fo3d = result.webEyeTrack.faceOrigin3D
-    // const W_HV = result.webEyeTrack.headVector
+    const W_fo3d = result.gaze.faceOrigin3D
+    // const W_HV = result.gaze.headVector
     // const FL_FAT = result.faceLandmarker.facialTransformationMatrixes[0].data
     //
     // console.log(`
@@ -264,19 +258,29 @@ tracker.onGazeResults = (result: BiometricsResult) => {
     }
 };
 
-const webcam = new WebcamClient('webcam');
-
-async function start() {
-    try {
-        await webcam.startWebcam(async (frame, context) => {
-            context.trace = [{ step: 'main_receive', timestamp: performance.now() }];
-            void tracker.processFrame(frame, context);
-        });
-    } catch (e) {
-        console.error("Failed to start tracking:", e);
-    }
+const client = new BiometricsClient('webcam');
+const times: number[] = []
+function average(nums: number[]): number {
+    return nums.reduce((a, b) => (a + b)) / nums.length;
 }
+client.onResult = (result) => {
+    result.frameMetadata.trace.push({ step: 'frame_recieved', timestamp: performance.now() })
+    const time = result.frameMetadata.trace[result.frameMetadata.trace.length-1].timestamp-result.frameMetadata.trace[0].timestamp
+    times.push(time)
+    // console.log(result.frameMetadata.trace)
+    console.log('Frame time:', Math.round(average(times)));
+    if(times.length>100) times.length = 0
+    showResults(result)
+    // if (result.gaze) {
+    //     // draw gaze point, update UI, etc.
+    // }
+    // if (result.heart?.status === 'ready') {
+    //     // show BPM
+    // }
+};
 
-// Bind to a button or run immediately
-// document.getElementById('startBtn')?.addEventListener('click', start);
-start();
+client.onWebcamStatus = (status, msg) => {
+    console.log(`Webcam: ${status}`, msg);
+};
+
+await client.start();
