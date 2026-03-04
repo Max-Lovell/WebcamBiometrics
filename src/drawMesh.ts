@@ -1,7 +1,23 @@
-import type { BiometricsResult } from './WebEyeTrack';
 import { FaceLandmarker, DrawingUtils, type NormalizedLandmark } from "@mediapipe/tasks-vision";
-import { FACE_ROIS } from './WebEyeTrack/utils/roiUtils.ts';
+import type {BiometricsResult} from "./pipeline/types.ts";
+// MediaPipe Face Mesh Indices for rPPG signal
+// Optimized ROIs based on GRGB rPPG research
+export const FACE_ROIS = {
+    // Center forehead (Avoids hair/eyebrows)
+    forehead: [107, 66, 69, 109, 10, 338, 299, 296, 336, 9],
 
+    // Left Cheek (Subject's Left - Indices > 200)
+    leftCheek: [347, 348, 329, 355, 429, 279, 358, 423, 425, 280],
+
+    // Right Cheek (Subject's Right - Indices < 200)
+    rightCheek: [118, 119, 100, 126, 209, 49, 129, 203, 205, 50]
+};
+
+// Helper to get points from indices if you need it elsewhere
+// (Assuming you pass the full landmarks array)
+export function getPoints(indices: number[], landmarks: any[]) {
+    return indices.map(i => landmarks[i]);
+}
 export function drawMesh(gaze_result: BiometricsResult, canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
