@@ -22,7 +22,7 @@ import type {VideoFrameData} from "../types.ts";
 
 // Reference
 // https://mediapipe-studio.webapps.google.com/demo/face_landmarker
-
+// TODO: This needs heavy fixing - very inefficient
 interface SupportX {
   eyePatches: tf.Tensor;
   headVectors: tf.Tensor;
@@ -447,7 +447,7 @@ export default class WebEyeTrack {
   }
 
   prepareInput(frame: VideoFrameData, result: FaceLandmarkerResult):  [ImageData, number[], number[]] {
-
+    // TODO: Note this is likely the culprit of the variable frame rate, see below
     let width: number;
     let height: number;
     let frameImageData: ImageData | ImageBitmap;
@@ -473,7 +473,7 @@ export default class WebEyeTrack {
       ctx.drawImage(frame, 0, 0);
       // This is the unavoidable CPU readback cost for using CPU-based mathUtils
       // With 'willReadFrequently', this is somewhat optimized
-      frameImageData = ctx.getImageData(0, 0, width, height);
+      frameImageData = ctx.getImageData(0, 0, width, height); // TODO: triggers a GPU→CPU readback, which is inherently variable in timing depending on GPU pipeline state.
     }
 
     // If perspective matrix is not set, initialize it
@@ -517,7 +517,7 @@ export default class WebEyeTrack {
     // specific coordinate xyz origin for gaze vector.
     const face_origin_3d = this.computeFaceOrigin3D(
         frameImageData,
-      landmarks.map((l: NormalizedLandmark) => [l.x, l.y]),
+      landmarks.map((l: NormalizedLandmark) => [l.x, l.y]), // TODO: what is the diff between this and landmarks2d?!
       landmarks2d,
       faceRT
     )
@@ -751,7 +751,7 @@ export default class WebEyeTrack {
     const [predNormPog, tic4] = tf.tidy(() => {
 
       // Perform the gaze estimation via BlazeGaze Model (tensorflow.js)
-      const inputTensor = tf.browser.fromPixels(eyePatch).toFloat().expandDims(0);
+      const inputTensor = tf.browser.fromPixels(eyePatch).toFloat().expandDims(0); // TODO: CPU→GPU transfer creates variable timing
 
       // Divide the inputTensor by 255 to normalize pixel values
       const normalizedInputTensor = inputTensor.div(tf.scalar(255.0));
@@ -775,7 +775,7 @@ export default class WebEyeTrack {
       return [outputTensor, performance.now()];
     });
 
-    const normPog = await predNormPog.array() as number[][];
+    const normPog = await predNormPog.array() as number[][]; // TODO: async GPU→CPU readback here as well, depends on GPU state.
     tf.dispose(predNormPog);
 
     // Apply Kalman filter to smooth the gaze point

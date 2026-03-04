@@ -101,12 +101,14 @@ export class Pipeline {
         }
 
         // Initialize the Blackboard with the frame and metadata
-        const ctx: Blackboard = { frame, frameMetadata };
-        ctx.frameMetadata.trace = ctx.frameMetadata.trace ?? [] // init if missing
+        const ctx: Blackboard = { frame, frameMetadata }; // TODO: Trim down outputs with an optional debug: true flag to limit data crossing postmessage threshold.
+        ctx.frameMetadata.trace = ctx.frameMetadata.trace ?? [] // init if missing TODO: pre-allocate, maybe switch to {name:'',start:1, end:2} format
         ctx.frameMetadata.trace.push({ step: 'pipeline_start', timestamp: performance.now() });
 
         // Memoised empty promise Map — ensure each stage runs only once per frame
         // e.g. Gaze and Heart Rate depend on Face, but don't want running twice
+        // TODO: this is the key suspect in the GC pressure resulting in dropped frames - promises are heavy and unnecessary here.
+        //  could cache the execution plan — resolve the dependency graph once in addStage, produce a sorted array of "tiers" (tier 0: face, tier 1: gaze + heart), then processFrame just iterates tiers with Promise.all on each tier.
         const promises = new Map<string, Promise<void>>(); // Note: Map is insertion-ordered list of key:value pairs
 
         const run = (stage: Stage): Promise<void> => {
@@ -130,7 +132,7 @@ export class Pipeline {
                 // so .then() won't fire until that face promise resolves. The gaze promise gets stored in the map.
             // TODO: note logging trace times, looks like GazeStage.process is async and tracker.step returns a promise which involves synchronous GPU work so event loop blocked and heart actually starts after.
             const promise = Promise.all(depPromises).then(async () => {
-                ctx.frameMetadata.trace!.push({ step: `${stage.name}_start`, timestamp: performance.now() });
+                ctx.frameMetadata.trace!.push({ step: `${stage.name}_start`, timestamp: performance.now() }); // TODO: figure out how to do this more performantly, or cut out if not profiling.
                 try { // TODO: stages that depend on failed stage could skip rather than throw or check ctx.errors map or blackboard for deps
                     await stage.process(ctx);  // async run process function from stage
                 } catch (err) { // TODO: stage.reset() on face detection fail?
@@ -159,7 +161,7 @@ export class Pipeline {
             (_dropFrame as any).close();
         }
 
-        return result;
+        return result; // TODO: Preallocate results and blackboard to save GC
     }
 
     // Reset all stages (e.g., on session change or face lost).

@@ -1,4 +1,4 @@
-import { Matrix, inverse, solve} from 'ml-matrix';
+import { Matrix, inverse, solve} from 'ml-matrix'; // TODO: this in faceReconstruction and computeFaceOrigin3D probably should use preallocated mats
 import type {Matrix as MediaPipeMatrix, NormalizedLandmark} from '@mediapipe/tasks-vision';
 import * as tf from '@tensorflow/tfjs';
 import type {Point} from '../types.ts';
@@ -295,6 +295,7 @@ export function obtainEyePatch(
     dstImgSize: [number, number] = [512, 128]
 ): ImageData {
 
+    // TODO: note this is the largest time sink for the package, see here for timing improvements.
     // TODO: clean up extracted region:
         // fix eyes drifting down when head moved up, top black bar on clipping
         // use more stable and less protruding landmarks?

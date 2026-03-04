@@ -196,6 +196,8 @@ export class BiometricsClient {
     // ── Worker message handling ─────────────────────────────────────────
     // Recieve message back
     private handleWorkerMessage(e: MessageEvent): void {
+        // Note in profiling there is a minor GC caused by collection of these - the less data crossing the threshold the better
+        // Using Transferable objects or SharedArrayBuffer with Cross-Origin-Isolation headers could help... (not worth it)
         const { type } = e.data;
 
         switch (type) {
