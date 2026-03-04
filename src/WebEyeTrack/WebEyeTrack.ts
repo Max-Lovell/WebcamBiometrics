@@ -535,7 +535,7 @@ export default class WebEyeTrack {
     ];
   }
 
-  adapt(
+  async adapt(
     eyePatches: ImageData[],
     headVectors: number[][],
     faceOrigins3D: number[][],
@@ -639,8 +639,8 @@ export default class WebEyeTrack {
         const supportPreds = tf.tidy(() => {
           return this.blazeGaze.predict(tfEyePatches, tfHeadVectors, tfFaceOrigins3D);
         });
-        const supportPredsNumber = supportPreds.arraySync() as number[][];
-        const supportYNumber = tfSupportY.arraySync() as number[][];
+        const supportPredsNumber = await supportPreds.array() as number[][];
+        const supportYNumber = await tfSupportY.array() as number[][];
         // Dispose the prediction tensor after extracting values
         tf.dispose(supportPreds);
         try { // TODO: Already added this try catch.
@@ -694,6 +694,8 @@ export default class WebEyeTrack {
   }
 
   async step(frame: VideoFrameData, timestamp: number, result: FaceLandmarkerResult | null): Promise<WebEyeTrackResult> {
+    // TODO: Note this returns a promise but does synchronous GPU work internally so blocks worker thread until that yields.
+    //  need to make the TF.js inference actually async at some point.
     const tic1 = performance.now();
     // result = null; // For testing purposes, we can set result to null to simulate no face detected
     // TODO: move up to worker
@@ -773,7 +775,7 @@ export default class WebEyeTrack {
       return [outputTensor, performance.now()];
     });
 
-    const normPog = predNormPog.arraySync() as number[][];
+    const normPog = await predNormPog.array() as number[][];
     tf.dispose(predNormPog);
 
     // Apply Kalman filter to smooth the gaze point
