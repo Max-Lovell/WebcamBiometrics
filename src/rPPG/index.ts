@@ -22,8 +22,6 @@ export { HeartRateMonitor } from './HeartRateMonitor';
 export type {
     HeartRateMonitorConfig,
     HeartRateResult,
-    EstimationMethod,
-    SmoothingStrategy,
     RegionDetail,
 } from './HeartRateMonitor';
 
