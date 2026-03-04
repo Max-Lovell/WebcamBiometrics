@@ -1,7 +1,7 @@
 import * as tf from '@tensorflow/tfjs';
 import {Matrix} from 'ml-matrix';
 
-import type {Point, VideoFrameData, WebEyeTrackResult} from "./types.ts";
+import type {Point, WebEyeTrackResult} from "./types.ts";
 import BlazeGaze from "./BlazeGaze.ts";
 import {
   applyAffineMatrix,
@@ -18,6 +18,7 @@ import {
 } from "./utils/mathUtils.ts";
 import {KalmanFilter2D} from "./utils/filter.ts";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
+import type {VideoFrameData} from "../types.ts";
 
 // Reference
 // https://mediapipe-studio.webapps.google.com/demo/face_landmarker
