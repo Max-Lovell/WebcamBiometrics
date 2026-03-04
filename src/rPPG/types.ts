@@ -15,7 +15,8 @@ export interface RGB {
 // ─── Core Pipeline Config ───────────────────────────────────────────────────
 // Parameters shared across all signal processing modules. TODO: extend with more options
 export interface PipelineConfig {
-    sampleRate: number; // Sample rate in Hz (camera FPS, or target FPS after interpolation).
+    sampleRate: number; // Sample rate in Hz (camera FPS, or target FPS after interpolation). TODO: should be same as defines webcam properties.
+    // Heart rate range in BPM — sets bandpass filter cutoffs and FFT search bounds
     minBPM: number; // Minimum detectable heart rate in BPM/ high-pass filter cutoff - 42 BPM covers bradycardia; raise to 50-60 for exercise contexts.
     maxBPM: number; // Sets the low-pass filter cutoff - 240 would be quite high, 180-200 more reasonable
 }

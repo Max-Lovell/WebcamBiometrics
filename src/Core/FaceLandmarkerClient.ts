@@ -32,6 +32,7 @@ export default class FaceLandmarkerClient {
           modelAssetPath: `/wasm/face_landmarker.task`, //https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
           delegate: "GPU",
         },
+        // TODO: Make some of these optional and pass through config from constructor
         outputFaceBlendshapes: true,
         outputFacialTransformationMatrixes: true,
         runningMode: "VIDEO",

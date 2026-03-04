@@ -46,6 +46,7 @@ interface CachedMask {
 // canonical face mesh: https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
 // Face mesh points: https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png
 // optimal regions: https://www.nature.com/articles/s44325-024-00033-7 - NOTE not aligned perfectly, I went for maximising pixels
+// Note just using forehead might be better as pulse appears in cheeks at different times, unless some clever signal matching is done.
 export const FACE_ROIS: LandmarkerROIs = {
     // Center forehead — avoids hair and eyebrows
     forehead: [107, 66, 105, 63, 68, 54, 103, 67, 109, 10, 338, 297, 332, 284, 298, 293, 334, 296, 336, 285, 417, 351, 419, 197, 196, 122, 193, 55],
