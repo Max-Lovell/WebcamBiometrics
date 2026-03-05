@@ -5,15 +5,12 @@ import {inverse, Matrix} from "ml-matrix";
 import type {Point} from "../types.ts";
 import { safeSVD } from './safeSVD.ts';
 
-/**
- * Estimates a 3x3 homography matrix from 4 point correspondences.
- */
-
+// Estimates a 3x3 homography matrix from 4 point correspondences.
 export function computeHomography(src: Point[], dst: Point[]): number[][] {
     // maps points from face in video to the flat, normalized crop
     // src = original 4 tilted corners, dst = 512*512 square
     if (src.length !== 4 || dst.length !== 4) {
-        throw new Error('Need exactly 4 source and 4 destination points');
+        throw new Error("Need exactly 4 source and 4 destination points");
     }
 
     const A: number[][] = [];
@@ -40,18 +37,10 @@ export function computeHomography(src: Point[], dst: Point[]): number[][] {
     // Extract Right Singular Vector and reshape back to 3*3 matrix
     const h = V.getColumn(V.columns - 1);
 
-    const H = [
-        h.slice(0, 3),
-        h.slice(3, 6),
-        h.slice(6, 9),
-    ];
-
-    return H;
+    return [h.slice(0, 3), h.slice(3, 6), h.slice(6, 9)];
 }
 
-/**
- * Apply a homography matrix to a point.
- */
+// Apply a homography matrix to a point.
 export function applyHomography(H: number[][], pt: number[]): number[] {
     const [x, y] = pt;
     const denom = H[2][0] * x + H[2][1] * y + H[2][2];
@@ -60,9 +49,7 @@ export function applyHomography(H: number[][], pt: number[]): number[] {
     return [xPrime, yPrime];
 }
 
-/**
- * Applies homography to warp a source ImageData to a target rectangle.
- */
+// Applies homography to warp a source ImageData to a target rectangle. Uses backward mapping (iterates destination pixels, looks up source).
 export function warpImageData(
     srcImage: ImageData,
     H: number[][],
@@ -137,21 +124,7 @@ export function cropImageData(
     return output;
 }
 
-/**
- * Resizes an ImageData using bilinear interpolation.
- * This matches OpenCV's cv2.resize() default behavior (INTER_LINEAR).
- *
- * Bilinear interpolation provides smooth, high-quality resizing by computing
- * a weighted average of the 4 nearest pixels for each output pixel.
- *
- * This is significantly faster than homography-based warping when only
- * simple rectangular scaling is needed (no rotation, skew, or perspective).
- *
- * @param source - Source ImageData to resize
- * @param outWidth - Output width in pixels
- * @param outHeight - Output height in pixels
- * @returns Resized ImageData with bilinear interpolation
- */
+// Resizes an ImageData using bilinear interpolation - matches OpenCV's cv2.resize() default behavior (INTER_LINEAR).
 export function resizeImageData(
     source: ImageData,
     outWidth: number,
@@ -170,8 +143,8 @@ export function resizeImageData(
         for (let x = 0; x < outWidth; x++) {
             const xDiff = Math.floor(xRatio * x);
             const yDiff = Math.floor(yRatio * y);
-            const xWeight = (xRatio * x) - xDiff;
-            const yWeight = (yRatio * y) - yDiff;
+            const xWeight = xRatio * x - xDiff;
+            const yWeight = yRatio * y - yDiff;
 
             const index = (y * outWidth + x) * 4;
             // 4 neighbors: a=TL, b=TR, c=BL, d=BR
@@ -186,95 +159,40 @@ export function resizeImageData(
                 const c = src[cIdx + i];
                 const d = src[dIdx + i];
 
-                // Bilinear interpolation formula
-                const pixel = a * (1 - xWeight) * (1 - yWeight) +
+                dst[index + i] =
+                    a * (1 - xWeight) * (1 - yWeight) +
                     b * xWeight * (1 - yWeight) +
                     c * yWeight * (1 - xWeight) +
                     d * xWeight * yWeight;
-
-                dst[index + i] = pixel;
             }
-            dst[index + 3] = 255; // Alpha
+            dst[index + 3] = 255;
         }
     }
     return output;
 }
 
-/**
- * Compares two ImageData objects and computes pixel-wise differences.
- * Used for validation and testing to ensure optimizations maintain correctness.
- *
- * @param img1 - First ImageData
- * @param img2 - Second ImageData
- * @returns Statistics about pixel differences
- */
-export function compareImageData(
-    img1: ImageData,
-    img2: ImageData
-): { maxDiff: number; meanDiff: number; histogram: number[] } {
-    if (img1.width !== img2.width || img1.height !== img2.height) {
-        throw new Error('Images must have the same dimensions for comparison');
-    }
-
-    const data1 = img1.data;
-    const data2 = img2.data;
-    const numPixels = img1.width * img1.height;
-    const histogram = new Array(256).fill(0);
-
-    let sumDiff = 0;
-    let maxDiff = 0;
-
-    // Compare each pixel (RGB channels only, ignore alpha)
-    for (let i = 0; i < numPixels; i++) {
-        const idx = i * 4;
-
-        for (let c = 0; c < 3; c++) { // R, G, B only
-            const diff = Math.abs(data1[idx + c] - data2[idx + c]);
-            sumDiff += diff;
-            maxDiff = Math.max(maxDiff, diff);
-            histogram[Math.floor(diff)]++;
-        }
-    }
-
-    const meanDiff = sumDiff / (numPixels * 3);
-
-    return { maxDiff, meanDiff, histogram };
-}
-
+// Extracts, dewarps, and resizes the eye region from a face image.
+// Pipeline: face landmarks → homography warp to square → crop eye strip → bilinear resize to CNN input size.
 export function obtainEyePatch(
     frame: ImageData,
     faceLandmarks: Point[],
-    facePaddingCoefs: [number, number] = [0.4, 0.2], // Allow extracted region around non-moving landmarks
+    facePaddingCoefs: [number, number] = [0.4, 0.2],
     faceCropSize: number = 512,
     dstImgSize: [number, number] = [512, 128]
 ): ImageData {
+    // Anchor landmarks: eyebrows to chin, nose centre for stability
+    const center = faceLandmarks[4];
+    const leftTop = faceLandmarks[103];
+    const leftBottom = faceLandmarks[150];
+    const rightTop = faceLandmarks[332];
+    const rightBottom = faceLandmarks[379];
 
-    // TODO: note this is the largest time sink for the package, see here for timing improvements.
-    // TODO: clean up extracted region:
-    // fix eyes drifting down when head moved up, top black bar on clipping
-    // use more stable and less protruding landmarks?
-    // eye corners? Upper Rigid Mask - Nasal Bridge / Glabella to Temples / Forehead then offset before extraction?
-
-    // Takes tilted/rotated face from camera and unwarps to aligned rectangular image of eyes
-
-    // Prepare src and dst
-    // Note these are points from top eyebrows to bottom chin, nose centre for stability
-    const center = faceLandmarks[4]; //suggested: 168 // original: 4
-    const leftTop = faceLandmarks[103]; //105 // original: 103
-    const leftBottom = faceLandmarks[150]; //118 // original: 150 bottom chin
-    const rightTop = faceLandmarks[332]; //334 // original: 332
-    const rightBottom = faceLandmarks[379]; //347 // original: 379 chin
-
+    // Apply radial padding around centre
     let srcPts: Point[] = [leftTop, leftBottom, rightBottom, rightTop];
-
-    // Apply radial padding - take extracted region around non-moving landmarks. TODO: could we extract from more stable place?
     srcPts = srcPts.map(([x, y]) => {
-        const dx = x - center[0]; // relative to center
+        const dx = x - center[0];
         const dy = y - center[1];
-        return [
-            x + dx * facePaddingCoefs[0],
-            y + dy * facePaddingCoefs[1],
-        ];
+        return [x + dx * facePaddingCoefs[0], y + dy * facePaddingCoefs[1]];
     });
 
     const dstPts: Point[] = [ // 4 corners of a perfect square
@@ -287,77 +205,29 @@ export function obtainEyePatch(
     // Compute homography matrix
     // maps points from entire face in video to the flat, normalized crop
     const H = computeHomography(srcPts, dstPts);
-
-    // Step 5: Warp the image to square
     const warped = warpImageData(frame, H, faceCropSize, faceCropSize);
 
-    // Step 6: Apply the homography matrix to the facial landmarks
-    // transforms original landmarks to flattened image coordinates
-    const warpedLandmarks = faceLandmarks.map(pt => applyHomography(H, pt));
+    // Crop eye strip using warped landmark positions
+    const warpedLandmarks = faceLandmarks.map((pt) => applyHomography(H, pt));
+    const topEyes = warpedLandmarks[151];
+    const bottomEyes = warpedLandmarks[195];
 
-    // Step 7: Generate the crop of the eyes - use flattened facelandmarker to
-    const top_eyes_patch = warpedLandmarks[151];
-    const bottom_eyes_patch = warpedLandmarks[195];
+    const cropY = Math.round(topEyes[1]);
+    let cropHeight = Math.round(bottomEyes[1] - topEyes[1]);
 
-    const cropY = Math.round(top_eyes_patch[1]);
-    let cropHeight = Math.round(bottom_eyes_patch[1] - top_eyes_patch[1]);
-
-    // Check for the "Inverted Eye" (Negative Height)
     if (cropHeight <= 0) {
-        console.warn(`[MathUtils] Invalid Eye Crop Height: ${cropHeight} (Warp Matrix Flip). Defaulting to 1px.`);
+        console.warn(
+            `[eyePatch] Invalid crop height: ${cropHeight} (warp matrix flip). Defaulting to 1px.`
+        );
         cropHeight = 1;
     }
 
-    // Check for "Out of Bounds" (Y + Height > Image Height)
     if (cropY + cropHeight > warped.height) {
         cropHeight = Math.max(1, warped.height - cropY);
     }
 
-    // Crop out strip containing eyes.
-    const eye_patch = cropImageData(
-        warped,
-        0,
-        cropY,
-        warped.width,
-        cropHeight
-    );
+    const eyeStrip = cropImageData(warped, 0, cropY, warped.width, cropHeight);
 
-    // Step 8: Resize the eye patch to the desired output size
-    // OPTIMIZATION: Using bilinear resize instead of homography for simple rectangular scaling
-    // This is ~2x faster and matches the Python reference implementation (cv2.resize)
-    // The previous homography approach was mathematically equivalent but computationally expensive
-    // resisze to 512*128 expected by CNN.
-    const resizedEyePatch = resizeImageData(
-        eye_patch,
-        dstImgSize[0],
-        dstImgSize[1]
-    );
-
-    // VERIFICATION MODE (for development/testing only)
-    // Uncomment to compare resize vs homography and verify numerical equivalence
-    /*
-    const eyePatchSrcPts: Point[] = [
-        [0, 0],
-        [0, eye_patch.height],
-        [eye_patch.width, eye_patch.height],
-        [eye_patch.width, 0],
-    ];
-    const eyePatchDstPts: Point[] = [
-        [0, 0],
-        [0, dstImgSize[1]],
-        [dstImgSize[0], dstImgSize[1]],
-        [dstImgSize[0], 0],
-    ];
-    const eyePatchH = computeHomography(eyePatchSrcPts, eyePatchDstPts);
-    const homographyResult = warpImageData(eye_patch, eyePatchH, dstImgSize[0], dstImgSize[1]);
-    const diff = compareImageData(resizedEyePatch, homographyResult);
-    console.log('Eye patch resize verification:', {
-        maxDiff: diff.maxDiff,
-        meanDiff: diff.meanDiff,
-        acceptableDiff: diff.meanDiff < 2.0,
-        note: 'Differences expected due to interpolation method (bilinear vs nearest-neighbor)'
-    });
-    */
-
-    return resizedEyePatch;
+    // Resize to CNN input dimensions (512×128)
+    return resizeImageData(eyeStrip, dstImgSize[0], dstImgSize[1]);
 }
