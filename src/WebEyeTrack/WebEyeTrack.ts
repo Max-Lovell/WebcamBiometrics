@@ -3,19 +3,10 @@ import {Matrix} from 'ml-matrix';
 
 import type {Point, WebEyeTrackResult} from "./types.ts";
 import BlazeGaze from "./BlazeGaze.ts";
-import {
-  applyAffineMatrix,
-  computeAffineMatrixML,
-  computeEAR,
-  computeFaceOrigin3D,
-  createIntrinsicsMatrix,
-  createPerspectiveMatrix,
-  estimateFaceWidth,
-  faceReconstruction,
-  getHeadVector,
-  obtainEyePatch,
-  translateMatrix,
-} from "./utils/mathUtils.ts";
+import { computeEAR } from "./utils/blink.ts";
+import { obtainEyePatch } from './utils/eyePatch.ts'
+import { computeAffineMatrixML, applyAffineMatrix } from './utils/affineTransformation.ts'
+import { computeFaceOrigin3D,  createIntrinsicsMatrix, createPerspectiveMatrix, estimateFaceWidth, faceReconstruction, translateMatrix, getHeadVector } from './utils/faceOrigin.ts'
 import {KalmanFilter2D} from "./utils/filter.ts";
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import type {VideoFrameData} from "../types.ts";
