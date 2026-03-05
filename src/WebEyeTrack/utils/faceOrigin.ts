@@ -3,7 +3,7 @@
 // ============================================================================
 import { Matrix, inverse} from 'ml-matrix'; // TODO: this in faceReconstruction and computeFaceOrigin3D probably should use preallocated mats
 import type {Matrix as MediaPipeMatrix} from '@mediapipe/tasks-vision';
-import type {Point} from '../types.ts';
+import type {Point} from '../../types.ts';
 
 // Depth radial parameters
 const MAX_STEP_CM = 5;
@@ -75,9 +75,9 @@ export function createIntrinsicsMatrix(width: number, height: number): Matrix {
 // Face Width Estimation
 // ============================================================================
 
-function distance2D(p1: number[], p2: number[]): number {
-    const dx = p1[0] - p2[0];
-    const dy = p1[1] - p2[1];
+function distance2D(p1: Point, p2: Point): number {
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
     return Math.sqrt(dx * dx + dy * dy);
 }
 
@@ -89,8 +89,8 @@ export function estimateFaceWidth(
 
     for (const side of ['left', 'right']) {
         const eyeIrisLandmarks = side === 'left' ? LEFT_IRIS_LANDMARKS : RIGHT_IRIS_LANDMARKS;
-        const leftmost = faceLandmarks[eyeIrisLandmarks[4]].slice(0, 2);
-        const rightmost = faceLandmarks[eyeIrisLandmarks[2]].slice(0, 2);
+        const leftmost = faceLandmarks[eyeIrisLandmarks[4]];
+        const rightmost = faceLandmarks[eyeIrisLandmarks[2]];
         const horizontalDist = distance2D(leftmost, rightmost);
         irisDist.push(horizontalDist);
     }
@@ -283,9 +283,7 @@ function multiplyVecByMat(
     return [res[0], res[1], res[2]];
 }
 
-/**
- * Converts pitch/yaw/roll to a 3D direction vector, applying roll rotation.
- */
+// Converts pitch/yaw/roll to a 3D direction vector, applying roll rotation.
 function pyrToVector(pitch: number, yaw: number, roll: number): number[] {
     const x = Math.cos(pitch) * Math.sin(yaw);
     const y = Math.sin(pitch);

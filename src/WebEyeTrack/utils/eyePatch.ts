@@ -2,7 +2,7 @@
 // Eye Patch Extraction and Homography
 // ============================================================================
 import {inverse, Matrix} from "ml-matrix";
-import type {Point} from "../types.ts";
+import type {Point} from "../../types.ts";
 import { safeSVD } from './safeSVD.ts';
 
 // Estimates a 3x3 homography matrix from 4 point correspondences.
@@ -18,8 +18,8 @@ export function computeHomography(src: Point[], dst: Point[]): number[][] {
     // Map points from one square to another using linear equations to solve H
     // Equations in the form Ah=0, h=vector of the 9 values of H, solve for 0
     for (let i = 0; i < 4; i++) {
-        const [x, y] = src[i];
-        const [u, v] = dst[i];
+        const {x, y} = src[i];
+        const {x: u, y: v} = dst[i];
         // for every x,y point in original, two rows.
         // Formula derived from cross-product rule of vectors
         A.push([-x, -y, -1, 0, 0, 0, x * u, y * u, u]);
@@ -41,8 +41,8 @@ export function computeHomography(src: Point[], dst: Point[]): number[][] {
 }
 
 // Apply a homography matrix to a point.
-export function applyHomography(H: number[][], pt: number[]): number[] {
-    const [x, y] = pt;
+export function applyHomography(H: number[][], pt: Point): number[] {
+    const {x, y} = pt;
     const denom = H[2][0] * x + H[2][1] * y + H[2][2];
     const xPrime = (H[0][0] * x + H[0][1] * y + H[0][2]) / denom;
     const yPrime = (H[1][0] * x + H[1][1] * y + H[1][2]) / denom;
@@ -189,17 +189,20 @@ export function obtainEyePatch(
 
     // Apply radial padding around centre
     let srcPts: Point[] = [leftTop, leftBottom, rightBottom, rightTop];
-    srcPts = srcPts.map(([x, y]) => {
-        const dx = x - center[0];
-        const dy = y - center[1];
-        return [x + dx * facePaddingCoefs[0], y + dy * facePaddingCoefs[1]];
+    srcPts = srcPts.map(({x, y}) => {
+        const dx = x - center.x;
+        const dy = y - center.y;
+        return {
+            x: x + dx * facePaddingCoefs[0],
+            y: y + dy * facePaddingCoefs[1]
+        };
     });
 
     const dstPts: Point[] = [ // 4 corners of a perfect square
-        [0, 0],
-        [0, faceCropSize],
-        [faceCropSize, faceCropSize],
-        [faceCropSize, 0],
+        {x: 0, y: 0},
+        {x: 0, y: faceCropSize},
+        {x: faceCropSize, y: faceCropSize},
+        {x: faceCropSize, y: 0},
     ];
 
     // Compute homography matrix

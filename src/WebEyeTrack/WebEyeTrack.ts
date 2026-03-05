@@ -1,7 +1,8 @@
 import * as tf from "@tensorflow/tfjs";
 import { Matrix } from "ml-matrix";
 
-import type { Point, WebEyeTrackResult } from "./types.ts";
+import type { WebEyeTrackResult } from "./types.ts";
+import type { Point } from "../types.ts";
 import BlazeGaze from "./BlazeGaze.ts";
 import { computeEAR } from "./utils/blink.ts";
 import { obtainEyePatch } from "./utils/eyePatch.ts";
@@ -373,11 +374,11 @@ export default class WebEyeTrack {
 
     // Convert normalised [0..1] landmarks to pixel coordinates
     const landmarks = result.faceLandmarks[0];
-    const landmarks2d: Point[] = landmarks.map(
-        (landmark: NormalizedLandmark) => [
-          Math.floor(landmark.x * width),
-          Math.floor(landmark.y * height),
-        ]
+    const landmarks2d: Point[] = landmarks.map( // TODO: convert only the landmarks we actually need
+        (landmark: NormalizedLandmark) => ({
+            x: Math.floor(landmark.x * width),
+            y: Math.floor(landmark.y * height)
+        })
     );
 
     const faceRT = translateMatrix(result.facialTransformationMatrixes[0]);

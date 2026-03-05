@@ -1,5 +1,3 @@
-export type Point = number[]; // TODO: refactor usages to work in {x,y} and then move to top level types.ts
-
 export interface WebEyeTrackResult {
   // Preprocessing
   eyePatch: ImageData; // [H, W, 3] - RGB image of the eye region
