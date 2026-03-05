@@ -10,6 +10,7 @@ export interface WebEyeTrackResult {
   // Meta data
   durations: Record<string, number>; // seconds
   timestamp: number; // milliseconds
+  debug?: {}; // For anything else.
 }
 
 
