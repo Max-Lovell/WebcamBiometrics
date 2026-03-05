@@ -234,3 +234,51 @@ export function obtainEyePatch(
     // Resize to CNN input dimensions (512×128)
     return resizeImageData(eyeStrip, dstImgSize[0], dstImgSize[1]);
 }
+
+// TODO: Testing alternative approach to EyePatch
+function midpoint(point1: Point, point2: Point): Point {
+    return {
+        x: (point1.x+point2.x)/2,
+        y: (point1.y+point2.y)/2
+    }
+}
+
+export function altEyePatch(landmarks: Point[], imageData: ImageData) {
+    const left = landmarks[372]; //143
+    const right = landmarks[143];
+    const top = landmarks[9];
+    const bottom = midpoint(landmarks[229], landmarks[449]);
+    const center = midpoint(landmarks[133], landmarks[362]);
+
+    // Build 4 corners of the rotated bounding box
+    // Use the eye-line angle to rotate top/bottom points
+    const dx = right.x - left.x;
+    const dy = right.y - left.y;
+    const angle = Math.atan2(dy, dx);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    const halfW = ((dx ** 2 + dy ** 2) ** 0.5) / 2;
+    const topDist = ((top.x - center.x) ** 2 + (top.y - center.y) ** 2) ** 0.5;
+    const botDist = ((bottom.x - center.x) ** 2 + (bottom.y - center.y) ** 2) ** 0.5;
+
+    // 4 corners of the oriented box around center
+    const srcPts: Point[] = [
+        { x: center.x + halfW * cos - topDist * sin, y: center.y + halfW * sin + topDist * cos },
+        { x: center.x - halfW * cos - topDist * sin, y: center.y - halfW * sin + topDist * cos },
+        { x: center.x - halfW * cos + botDist * sin, y: center.y - halfW * sin - botDist * cos },
+        { x: center.x + halfW * cos + botDist * sin, y: center.y + halfW * sin - botDist * cos },
+    ];
+
+    const outW = 512;
+    const outH = 128;
+    const dstPts: Point[] = [
+        { x: 0, y: 0 },
+        { x: outW, y: 0 },
+        { x: outW, y: outH },
+        { x: 0, y: outH },
+    ];
+
+    const H = computeHomography(srcPts, dstPts);
+    return warpImageData(imageData, H, outW, outH);
+}
