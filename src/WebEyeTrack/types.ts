@@ -1,5 +1,3 @@
-import type {Matrix} from "@mediapipe/tasks-vision";
-
 export type Point = number[]; // TODO: refactor usages to work in {x,y} and then move to top level types.ts
 
 export interface WebEyeTrackResult {
@@ -7,8 +5,6 @@ export interface WebEyeTrackResult {
   eyePatch: ImageData; // [H, W, 3] - RGB image of the eye region
   headVector: Array<number>; // [3,] - Head vector in camera coordinates
   faceOrigin3D: Array<number>; // X, Y, Z
-  // Face Reconstruction
-  metric_transform: Matrix; // metricFace: Matrix; [4, 4]
   // Gaze state (blinking)
   gazeState: 'open' | 'closed';
   // PoG (normalized screen coordinates)
