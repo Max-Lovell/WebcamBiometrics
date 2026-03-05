@@ -59,31 +59,14 @@ export function createPerspectiveMatrix(aspectRatio: number): Matrix {
     return perspectiveMatrix;
 }
 
-export function createIntrinsicsMatrix(
-    width: number, height: number,
-    fovX?: number // in degrees
-): Matrix {
+export function createIntrinsicsMatrix(width: number, height: number): Matrix {
     // Intrinsics Matrix is a computer Vision matrix (K) describing internal properties of the camera (focal length/ optical center)
     // Maps 3D camera coordinates (X,Y,Z) to 2D image pixel coordinates (u, v)
     // Note K is not really necessary for eye patch warp, but is for 3d head vector/face origin
-    const cX = width / 2;
-    const cY = height / 2;
-
-    // Camera center
-
-    // Estimate camera FOV - note fovX isn't passed in from tracker so f always = w (standard estimate)
-    let fX: number, fY: number;
-    if (fovX !== undefined) {
-        const fovXRad = (fovX * Math.PI) / 180;
-        fY = fX; // Assume square pixels
-        fX = width / (2 * Math.tan(fovXRad / 2));
-    } else {
-        fX = fY = width;
-    }
-
+    // Note just assumes standard FOV, TODO: consider passing in estimated FOV from a calibration step
     return new Matrix([
-        [fX, 0, cX],
-        [0, fY, cY],
+        [width, 0, width / 2],
+        [0, width, height / 2],
         [0, 0, 1],
     ]);
 }
