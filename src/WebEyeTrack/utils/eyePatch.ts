@@ -42,11 +42,12 @@ export function computeHomography(src: Point[], dst: Point[]): number[][] {
 
 // Apply a homography matrix to a point.
 export function applyHomography(H: number[][], pt: Point): number[] {
-    const {x, y} = pt;
+    const { x, y } = pt;
     const denom = H[2][0] * x + H[2][1] * y + H[2][2];
-    const xPrime = (H[0][0] * x + H[0][1] * y + H[0][2]) / denom;
-    const yPrime = (H[1][0] * x + H[1][1] * y + H[1][2]) / denom;
-    return [xPrime, yPrime];
+    return [
+        (H[0][0] * x + H[0][1] * y + H[0][2]) / denom,
+        (H[1][0] * x + H[1][1] * y + H[1][2]) / denom,
+    ];
 }
 
 // Applies homography to warp a source ImageData to a target rectangle. Uses backward mapping (iterates destination pixels, looks up source).
