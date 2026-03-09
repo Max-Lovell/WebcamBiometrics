@@ -1,102 +1,128 @@
 // ============================================================================
 // Eye Patch Extraction and Homography
 // ============================================================================
-import {inverse, Matrix} from "ml-matrix";
-import type {Point} from "../../types.ts";
-import { safeSVD } from './safeSVD.ts';
 
-// Estimates a 3x3 homography matrix from 4 point correspondences.
-export function computeHomography(src: Point[], dst: Point[]): number[][] {
-    // maps points from face in video to the flat, normalized crop
-    // src = original 4 tilted corners, dst = 512*512 square
+import type { Point } from "../../types.ts";
+
+// ── Homography (Gaussian elimination, flat output) ──────────────────────────
+// Homography solved via Gaussian elimination (8-param DLT, H[8]=1).
+// No external dependencies — replaces the previous SVD/ml-matrix approach.
+// For 4 well-conditioned point correspondences the results are identical.
+// Compute 3×3 homography mapping src[i] → dst[i] for 4 point pairs.
+// Returns flat row-major [h0..h8] with h8=1, or null if degenerate.
+export function computeHomography(src: Point[], dst: Point[]): number[] | null {
     if (src.length !== 4 || dst.length !== 4) {
         throw new Error("Need exactly 4 source and 4 destination points");
     }
 
     const A: number[][] = [];
-
-    // Map points from one square to another using linear equations to solve H
-    // Equations in the form Ah=0, h=vector of the 9 values of H, solve for 0
+    const b: number[] = [];
     for (let i = 0; i < 4; i++) {
-        const {x, y} = src[i];
-        const {x: u, y: v} = dst[i];
-        // for every x,y point in original, two rows.
-        // Formula derived from cross-product rule of vectors
-        A.push([-x, -y, -1, 0, 0, 0, x * u, y * u, u]);
-        A.push([0, 0, 0, -x, -y, -1, x * v, y * v, v]);
+        const { x: sx, y: sy } = src[i];
+        const { x: dx, y: dy } = dst[i];
+        A.push([sx, sy, 1, 0, 0, 0, -sx * dx, -sy * dx]);
+        b.push(dx);
+        A.push([0, 0, 0, sx, sy, 1, -sx * dy, -sy * dy]);
+        b.push(dy);
     }
 
-    const A_mat = new Matrix(A);
-    // Singular Value Decomposition solution
-    // H corresponds to the right singular vector associated with the smallest singular value ("null space") of
-    const svd = safeSVD(A_mat);
+    const n = 8;
+    const M = A.map((row, i) => [...row, b[i]]);
 
-    // Last column of V (right-singular vectors) is the solution to Ah=0
-    // const h = svd.V.getColumn(svd.V.columns - 1);
-    const V = svd.rightSingularVectors;
-    // Extract Right Singular Vector and reshape back to 3*3 matrix
-    const h = V.getColumn(V.columns - 1);
+    for (let col = 0; col < n; col++) {
+        // Partial pivoting
+        let maxRow = col;
+        let maxVal = Math.abs(M[col][col]);
+        for (let row = col + 1; row < n; row++) {
+            if (Math.abs(M[row][col]) > maxVal) {
+                maxVal = Math.abs(M[row][col]);
+                maxRow = row;
+            }
+        }
+        [M[col], M[maxRow]] = [M[maxRow], M[col]];
 
-    return [h.slice(0, 3), h.slice(3, 6), h.slice(6, 9)];
+        const pivot = M[col][col];
+        if (Math.abs(pivot) < 1e-12) return null;
+
+        for (let j = col; j <= n; j++) M[col][j] /= pivot;
+        for (let row = 0; row < n; row++) {
+            if (row === col) continue;
+            const factor = M[row][col];
+            for (let j = col; j <= n; j++) M[row][j] -= factor * M[col][j];
+        }
+    }
+
+    const h = M.map(row => row[n]);
+    return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
 }
 
-// Apply a homography matrix to a point.
-export function applyHomography(H: number[][], pt: Point): number[] {
+// ── Homography helpers (flat 9-element format) ──────────────────────────────
+
+// Apply a flat homography to a point.
+export function applyHomography(H: number[], pt: Point): [number, number] {
     const { x, y } = pt;
-    const denom = H[2][0] * x + H[2][1] * y + H[2][2];
+    const denom = H[6] * x + H[7] * y + H[8];
     return [
-        (H[0][0] * x + H[0][1] * y + H[0][2]) / denom,
-        (H[1][0] * x + H[1][1] * y + H[1][2]) / denom,
+        (H[0] * x + H[1] * y + H[2]) / denom,
+        (H[3] * x + H[4] * y + H[5]) / denom,
     ];
 }
 
-// Applies homography to warp a source ImageData to a target rectangle. Uses backward mapping (iterates destination pixels, looks up source).
+// Invert a flat row-major 3×3 matrix. Returns null if singular.
+export function invertHomography(m: number[]): number[] | null {
+    const [a, b, c, d, e, f, g, h, i] = m;
+    const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if (Math.abs(det) < 1e-12) return null;
+    const inv = 1 / det;
+    return [
+        (e * i - f * h) * inv, (c * h - b * i) * inv, (b * f - c * e) * inv,
+        (f * g - d * i) * inv, (a * i - c * g) * inv, (c * d - a * f) * inv,
+        (d * h - e * g) * inv, (b * g - a * h) * inv, (a * e - b * d) * inv,
+    ];
+}
+
+// ── Image Warping (CPU, backward mapping) ───────────────────────────────────
+// Warp source ImageData to a target rectangle using a flat homography.
+// Uses backward mapping: iterates destination pixels, looks up source via H⁻¹.
 export function warpImageData(
     srcImage: ImageData,
-    H: number[][],
+    H: number[],
     outWidth: number,
     outHeight: number
-): ImageData {
-    // Invert the homography for backward mapping H^-1
-    const Hinv = inverse(new Matrix(H)).to2DArray();
+): ImageData | null {
+    const Hinv = invertHomography(H);
+    if (!Hinv) return null;
 
     const output = new ImageData(outWidth, outHeight);
     const src = srcImage.data;
     const dst = output.data;
-
     const srcW = srcImage.width;
     const srcH = srcImage.height;
 
-
     for (let y = 0; y < outHeight; y++) {
         for (let x = 0; x < outWidth; x++) {
-            // Map (x, y) in destination → (x', y') in source
-            // For every pixel in destination, find pixel in source image it corresponds to
-            const denom = Hinv[2][0] * x + Hinv[2][1] * y + Hinv[2][2];
-            const srcX = (Hinv[0][0] * x + Hinv[0][1] * y + Hinv[0][2]) / denom;
-            const srcY = (Hinv[1][0] * x + Hinv[1][1] * y + Hinv[1][2]) / denom;
+            const denom = Hinv[6] * x + Hinv[7] * y + Hinv[8];
+            const srcX = (Hinv[0] * x + Hinv[1] * y + Hinv[2]) / denom;
+            const srcY = (Hinv[3] * x + Hinv[4] * y + Hinv[5]) / denom;
 
             const ix = Math.floor(srcX);
             const iy = Math.floor(srcY);
 
-            // Bounds check
-            if (ix < 0 || iy < 0 || ix >= srcW || iy >= srcH) {
-                continue; // leave pixel transparent
-            }
+            if (ix < 0 || iy < 0 || ix >= srcW || iy >= srcH) continue;
 
             const srcIdx = (iy * srcW + ix) * 4;
             const dstIdx = (y * outWidth + x) * 4;
-            // Copy pixel colour over
-            dst[dstIdx] = src[srcIdx];       // R
-            dst[dstIdx + 1] = src[srcIdx + 1]; // G
-            dst[dstIdx + 2] = src[srcIdx + 2]; // B
-            dst[dstIdx + 3] = src[srcIdx + 3]; // A
+            dst[dstIdx]     = src[srcIdx];       // R
+            dst[dstIdx + 1] = src[srcIdx + 1];   // G
+            dst[dstIdx + 2] = src[srcIdx + 2];   // B
+            dst[dstIdx + 3] = src[srcIdx + 3];   // A
         }
     }
 
     return output;
 }
 
+// ── Crop & Resize Utilities ─────────────────────────────────────────────────
 export function cropImageData(
     source: ImageData,
     x: number,
@@ -104,7 +130,6 @@ export function cropImageData(
     width: number,
     height: number
 ): ImageData {
-    // console.log('Cropping image to: ', {width, height}) // Note this is protected from error now
     const output = new ImageData(width, height);
     const src = source.data;
     const dst = output.data;
@@ -114,18 +139,17 @@ export function cropImageData(
         for (let i = 0; i < width; i++) {
             const srcIdx = ((y + j) * srcWidth + (x + i)) * 4;
             const dstIdx = (j * width + i) * 4;
-
-            dst[dstIdx] = src[srcIdx];       // R
-            dst[dstIdx + 1] = src[srcIdx + 1]; // G
-            dst[dstIdx + 2] = src[srcIdx + 2]; // B
-            dst[dstIdx + 3] = src[srcIdx + 3]; // A
+            dst[dstIdx]     = src[srcIdx];
+            dst[dstIdx + 1] = src[srcIdx + 1];
+            dst[dstIdx + 2] = src[srcIdx + 2];
+            dst[dstIdx + 3] = src[srcIdx + 3];
         }
     }
 
     return output;
 }
 
-// Resizes an ImageData using bilinear interpolation - matches OpenCV's cv2.resize() default behavior (INTER_LINEAR).
+// Bilinear interpolation resize — matches OpenCV cv2.resize() INTER_LINEAR.
 export function resizeImageData(
     source: ImageData,
     outWidth: number,
@@ -136,7 +160,6 @@ export function resizeImageData(
     const dst = output.data;
     const { width: srcWidth, height: srcHeight } = source;
 
-    // -1 to align with pixel centers for bilinear calc
     const xRatio = (srcWidth - 1) / outWidth;
     const yRatio = (srcHeight - 1) / outHeight;
 
@@ -148,23 +171,17 @@ export function resizeImageData(
             const yWeight = yRatio * y - yDiff;
 
             const index = (y * outWidth + x) * 4;
-            // 4 neighbors: a=TL, b=TR, c=BL, d=BR
             const aIdx = (yDiff * srcWidth + xDiff) * 4;
             const bIdx = (yDiff * srcWidth + (xDiff + 1)) * 4;
             const cIdx = ((yDiff + 1) * srcWidth + xDiff) * 4;
             const dIdx = ((yDiff + 1) * srcWidth + (xDiff + 1)) * 4;
 
-            for (let i = 0; i < 3; i++) { // RGB only
-                const a = src[aIdx + i];
-                const b = src[bIdx + i];
-                const c = src[cIdx + i];
-                const d = src[dIdx + i];
-
+            for (let i = 0; i < 3; i++) {
                 dst[index + i] =
-                    a * (1 - xWeight) * (1 - yWeight) +
-                    b * xWeight * (1 - yWeight) +
-                    c * yWeight * (1 - xWeight) +
-                    d * xWeight * yWeight;
+                    src[aIdx + i] * (1 - xWeight) * (1 - yWeight) +
+                    src[bIdx + i] * xWeight * (1 - yWeight) +
+                    src[cIdx + i] * yWeight * (1 - xWeight) +
+                    src[dIdx + i] * xWeight * yWeight;
             }
             dst[index + 3] = 255;
         }
@@ -172,8 +189,11 @@ export function resizeImageData(
     return output;
 }
 
+// ── Eye Patch Extraction Pipeline ───────────────────────────────────────────
+
 // Extracts, dewarps, and resizes the eye region from a face image.
-// Pipeline: face landmarks → homography warp to square → crop eye strip → bilinear resize to CNN input size.
+// Pipeline: face landmarks → homography warp to square → crop eye strip
+//           → bilinear resize to CNN input size.
 export function obtainEyePatch(
     frame: ImageData,
     faceLandmarks: Point[],
@@ -190,31 +210,34 @@ export function obtainEyePatch(
 
     // Apply radial padding around centre
     let srcPts: Point[] = [leftTop, leftBottom, rightBottom, rightTop];
-    srcPts = srcPts.map(({x, y}) => {
-        const dx = x - center.x;
-        const dy = y - center.y;
-        return {
-            x: x + dx * facePaddingCoefs[0],
-            y: y + dy * facePaddingCoefs[1]
-        };
-    });
+    srcPts = srcPts.map(({ x, y }) => ({
+        x: x + (x - center.x) * facePaddingCoefs[0],
+        y: y + (y - center.y) * facePaddingCoefs[1],
+    }));
 
-    const dstPts: Point[] = [ // 4 corners of a perfect square
-        {x: 0, y: 0},
-        {x: 0, y: faceCropSize},
-        {x: faceCropSize, y: faceCropSize},
-        {x: faceCropSize, y: 0},
+    const dstPts: Point[] = [
+        { x: 0, y: 0 },
+        { x: 0, y: faceCropSize },
+        { x: faceCropSize, y: faceCropSize },
+        { x: faceCropSize, y: 0 },
     ];
 
-    // Compute homography matrix
-    // maps points from entire face in video to the flat, normalized crop
+    // Compute homography (face in video → flat, normalised crop)
     const H = computeHomography(srcPts, dstPts);
+    if (!H) {
+        console.warn("[eyePatch] Degenerate homography — returning blank patch");
+        return new ImageData(dstImgSize[0], dstImgSize[1]);
+    }
+
     const warped = warpImageData(frame, H, faceCropSize, faceCropSize);
+    if (!warped) {
+        console.warn("[eyePatch] Warp inversion failed — returning blank patch");
+        return new ImageData(dstImgSize[0], dstImgSize[1]);
+    }
 
     // Crop eye strip using warped landmark positions
-    const warpedLandmarks = faceLandmarks.map((pt) => applyHomography(H, pt));
-    const topEyes = warpedLandmarks[151];
-    const bottomEyes = warpedLandmarks[195];
+    const topEyes = applyHomography(H, faceLandmarks[151]);
+    const bottomEyes = applyHomography(H, faceLandmarks[195]);
 
     const cropY = Math.round(topEyes[1]);
     let cropHeight = Math.round(bottomEyes[1] - topEyes[1]);
@@ -236,40 +259,32 @@ export function obtainEyePatch(
     return resizeImageData(eyeStrip, dstImgSize[0], dstImgSize[1]);
 }
 
-// TODO: Testing alternative approach to EyePatch
-//  Note this is really quick to compute, but not what BlazeGaze is expecting, and has some wobble
+// ── Alt Eye Patch (oriented bounding box) ───────────────────────────────────
 
-//  to run add to const newEyePatch = altEyePatch(landmarks2d, imageData) to prepareInput and ,any to output array
-//  then grab in output of prepareInput in step() and pass to .fromPixels(eyePatch)
-//  can export different eyePatches in debug output
-//
-function midpoint(point1: Point, point2: Point): Point {
-    return {
-        x: (point1.x+point2.x)/2,
-        y: (point1.y+point2.y)/2
-    }
+function midpoint(a: Point, b: Point): Point {
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-export function altEyePatch(landmarks: Point[], imageData: ImageData) {
-    const left = landmarks[372]; //143
+export function altEyePatch(
+    landmarks: Point[],
+    imageData: ImageData
+): ImageData | null {
+    const left = landmarks[372];
     const right = landmarks[143];
     const top = landmarks[9];
     const bottom = midpoint(landmarks[229], landmarks[449]);
     const center = midpoint(landmarks[133], landmarks[362]);
 
-    // Build 4 corners of the rotated bounding box
-    // Use the eye-line angle to rotate top/bottom points
     const dx = right.x - left.x;
     const dy = right.y - left.y;
     const angle = Math.atan2(dy, dx);
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 
-    const halfW = ((dx ** 2 + dy ** 2) ** 0.5) / 2;
-    const topDist = ((top.x - center.x) ** 2 + (top.y - center.y) ** 2) ** 0.5;
-    const botDist = ((bottom.x - center.x) ** 2 + (bottom.y - center.y) ** 2) ** 0.5;
+    const halfW = Math.sqrt(dx * dx + dy * dy) / 2;
+    const topDist = Math.sqrt((top.x - center.x) ** 2 + (top.y - center.y) ** 2);
+    const botDist = Math.sqrt((bottom.x - center.x) ** 2 + (bottom.y - center.y) ** 2);
 
-    // 4 corners of the oriented box around center
     const srcPts: Point[] = [
         { x: center.x + halfW * cos - topDist * sin, y: center.y + halfW * sin + topDist * cos },
         { x: center.x - halfW * cos - topDist * sin, y: center.y - halfW * sin + topDist * cos },
@@ -287,5 +302,6 @@ export function altEyePatch(landmarks: Point[], imageData: ImageData) {
     ];
 
     const H = computeHomography(srcPts, dstPts);
+    if (!H) return null;
     return warpImageData(imageData, H, outW, outH);
 }
