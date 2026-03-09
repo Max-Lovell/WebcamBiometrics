@@ -81,6 +81,73 @@ export function invertHomography(m: number[]): number[] | null {
     ];
 }
 
+// ── Eye Quad Computation (pure geometry, no pixels) ─────────────────────────
+// single quad that goes straight from video frame to final 512×128 eye patch — no intermediate 512×512 image needed.
+// Returns null if the homography is degenerate.
+export function computeEyeQuad(
+    faceLandmarks: Point[],
+    facePaddingCoefs: [number, number] = [0.4, 0.2],
+    faceCropSize: number = 512,
+): Point[] | null {
+    // Anchor landmarks: eyebrows to chin, nose centre for stability
+    const center = faceLandmarks[4];
+
+    let srcPts: Point[] = [
+        faceLandmarks[103],  // leftTop
+        faceLandmarks[150],  // leftBottom
+        faceLandmarks[379],  // rightBottom
+        faceLandmarks[332],  // rightTop
+    ];
+
+    // Radial padding: push each corner away from centre
+    srcPts = srcPts.map(({ x, y }) => ({
+        x: x + (x - center.x) * facePaddingCoefs[0],
+        y: y + (y - center.y) * facePaddingCoefs[1],
+    }));
+
+    const dstPts: Point[] = [
+        { x: 0, y: 0 },
+        { x: 0, y: faceCropSize },
+        { x: faceCropSize, y: faceCropSize },
+        { x: faceCropSize, y: 0 },
+    ];
+
+    // H maps screen → 512×512 square
+    const H = computeHomography(srcPts, dstPts);
+    if (!H) return null;
+
+    // Find eye strip bounds in the 512×512 space
+    const topEyes = applyHomography(H, faceLandmarks[151]);
+    const bottomEyes = applyHomography(H, faceLandmarks[195]);
+
+    let cropY = topEyes[1];
+    let cropBottom = bottomEyes[1];
+    if (cropBottom <= cropY) cropBottom = cropY + 1;
+    if (cropBottom > faceCropSize) cropBottom = faceCropSize;
+
+    // The eye strip rectangle in 512×512 space:
+    //   top-left:     (0, cropY)
+    //   top-right:    (512, cropY)
+    //   bottom-right: (512, cropBottom)
+    //   bottom-left:  (0, cropBottom)
+    //
+    // Map these back to screen space via H⁻¹ to get the direct quad.
+    const Hinv = invertHomography(H);
+    if (!Hinv) return null;
+
+    const cropCorners: Point[] = [
+        { x: 0, y: cropY },
+        { x: faceCropSize, y: cropY },
+        { x: faceCropSize, y: cropBottom },
+        { x: 0, y: cropBottom },
+    ];
+
+    return cropCorners.map(pt => {
+        const [sx, sy] = applyHomography(Hinv, pt);
+        return { x: sx, y: sy };
+    });
+}
+
 // ── Image Warping (CPU, backward mapping) ───────────────────────────────────
 // Warp source ImageData to a target rectangle using a flat homography.
 // Uses backward mapping: iterates destination pixels, looks up source via H⁻¹.
@@ -189,11 +256,10 @@ export function resizeImageData(
     return output;
 }
 
-// ── Eye Patch Extraction Pipeline ───────────────────────────────────────────
-
-// Extracts, dewarps, and resizes the eye region from a face image.
-// Pipeline: face landmarks → homography warp to square → crop eye strip
-//           → bilinear resize to CNN input size.
+// ── Eye Patch Extraction (CPU convenience wrapper) ──────────────────────────
+// Full CPU pipeline: computes eye quad then warps via CPU pixel loop.
+// This is the drop-in replacement for the original obtainEyePatch.
+// For the GPU path, call computeEyeQuad() then warpGPU() from eyePatchWarp.ts.
 export function obtainEyePatch(
     frame: ImageData,
     faceLandmarks: Point[],
@@ -201,62 +267,31 @@ export function obtainEyePatch(
     faceCropSize: number = 512,
     dstImgSize: [number, number] = [512, 128]
 ): ImageData {
-    // Anchor landmarks: eyebrows to chin, nose centre for stability
-    const center = faceLandmarks[4];
-    const leftTop = faceLandmarks[103];
-    const leftBottom = faceLandmarks[150];
-    const rightTop = faceLandmarks[332];
-    const rightBottom = faceLandmarks[379];
-
-    // Apply radial padding around centre
-    let srcPts: Point[] = [leftTop, leftBottom, rightBottom, rightTop];
-    srcPts = srcPts.map(({ x, y }) => ({
-        x: x + (x - center.x) * facePaddingCoefs[0],
-        y: y + (y - center.y) * facePaddingCoefs[1],
-    }));
-
-    const dstPts: Point[] = [
-        { x: 0, y: 0 },
-        { x: 0, y: faceCropSize },
-        { x: faceCropSize, y: faceCropSize },
-        { x: faceCropSize, y: 0 },
-    ];
-
-    // Compute homography (face in video → flat, normalised crop)
-    const H = computeHomography(srcPts, dstPts);
-    if (!H) {
-        console.warn("[eyePatch] Degenerate homography — returning blank patch");
+    const quad = computeEyeQuad(faceLandmarks, facePaddingCoefs, faceCropSize);
+    if (!quad) {
+        console.warn("[eyePatch] Degenerate eye quad — returning blank patch");
         return new ImageData(dstImgSize[0], dstImgSize[1]);
     }
 
-    const warped = warpImageData(frame, H, faceCropSize, faceCropSize);
-    if (!warped) {
+    // Use warpImageData with the direct quad → 512×128 homography
+    const H = computeHomography(quad, [
+        { x: 0, y: 0 },
+        { x: dstImgSize[0] - 1, y: 0 },
+        { x: dstImgSize[0] - 1, y: dstImgSize[1] - 1 },
+        { x: 0, y: dstImgSize[1] - 1 },
+    ]);
+    if (!H) {
+        console.warn("[eyePatch] Degenerate warp homography — returning blank patch");
+        return new ImageData(dstImgSize[0], dstImgSize[1]);
+    }
+
+    const result = warpImageData(frame, H, dstImgSize[0], dstImgSize[1]);
+    if (!result) {
         console.warn("[eyePatch] Warp inversion failed — returning blank patch");
         return new ImageData(dstImgSize[0], dstImgSize[1]);
     }
 
-    // Crop eye strip using warped landmark positions
-    const topEyes = applyHomography(H, faceLandmarks[151]);
-    const bottomEyes = applyHomography(H, faceLandmarks[195]);
-
-    const cropY = Math.round(topEyes[1]);
-    let cropHeight = Math.round(bottomEyes[1] - topEyes[1]);
-
-    if (cropHeight <= 0) {
-        console.warn(
-            `[eyePatch] Invalid crop height: ${cropHeight} (warp matrix flip). Defaulting to 1px.`
-        );
-        cropHeight = 1;
-    }
-
-    if (cropY + cropHeight > warped.height) {
-        cropHeight = Math.max(1, warped.height - cropY);
-    }
-
-    const eyeStrip = cropImageData(warped, 0, cropY, warped.width, cropHeight);
-
-    // Resize to CNN input dimensions (512×128)
-    return resizeImageData(eyeStrip, dstImgSize[0], dstImgSize[1]);
+    return result;
 }
 
 // ── Alt Eye Patch (oriented bounding box) ───────────────────────────────────

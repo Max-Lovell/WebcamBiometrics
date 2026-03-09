@@ -5,7 +5,7 @@ import type { WebEyeTrackResult } from "./types.ts";
 import type { Point } from "../types.ts";
 import BlazeGaze from "./BlazeGaze.ts";
 import { computeEAR } from "./utils/blink.ts";
-import { obtainEyePatch } from "./utils/eyePatch.ts";
+import {computeEyeQuad} from "./utils/eyePatch.ts";
 import {
   computeAffineMatrixML,
   applyAffineMatrix,
@@ -25,6 +25,7 @@ import type {
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import type { VideoFrameData } from "../types.ts";
+import {warpGPU} from "./utils/eyePatchWarp.ts";
 
 // ============================================================================
 // Support Tensor Types
@@ -38,7 +39,7 @@ interface SupportX {
 
 // Convert JS objects into tensors - inputs for model learning/adaptation process
 function generateSupport(
-    eyePatches: ImageData[],
+    eyePatches: tf.Tensor4D[],
     headVectors: number[][],
     faceOrigins3D: number[][],
     normPogs: number[][]
@@ -46,13 +47,12 @@ function generateSupport(
   // tidy handles disposal of intermediate tensors from fromPixels/toFloat/div chain
   // TODO: does network expect [-1, 1]? e.g. .div(tf.scalar(127.5)).sub(tf.scalar(1.0))
   const batchPatches = tf.tidy(() =>
-      tf
-          .stack(
-              eyePatches.map((patch) => tf.browser.fromPixels(patch)),
-              0
-          )
-          .toFloat()
-          .div(tf.scalar(255.0))
+      tf.stack(
+          eyePatches.map((patch) =>
+              patch.squeeze([0])  // [1,H,W,3] → [H,W,3] for stacking
+          ),
+          0
+      )
   );
 
   const supportX: SupportX = {
@@ -117,6 +117,7 @@ export default class WebEyeTrack {
     timestamp: number;
   } | null = null;
   public latestGazeResult: WebEyeTrackResult | null = null;
+  private latestEyePatchTensor: tf.Tensor4D | null = null;
 
   // Separate buffers for calibration (persistent) vs clickstream (ephemeral) points
   public calibData: {
@@ -209,6 +210,8 @@ export default class WebEyeTrack {
 
   dispose(): void {
     if (this._disposed) return;
+    this.latestEyePatchTensor?.dispose();
+    this.latestEyePatchTensor = null;
 
     this.clearCalibrationBuffer();
     this.clearClickstreamPoints();
@@ -332,10 +335,11 @@ export default class WebEyeTrack {
 
     this.latestMouseClick = { x, y, timestamp: Date.now() };
 
-    if (this.loaded && this.latestGazeResult) {
+    if (this.loaded && this.latestGazeResult && this.latestGazeResult.gazeState === "open" && this.latestEyePatchTensor) {
       // Don't await here - just allow click to be handled
+      const eyePatchClone = this.latestEyePatchTensor.clone();
       this.adapt(
-          [this.latestGazeResult.eyePatch],
+          [eyePatchClone],
           [this.latestGazeResult.headVector],
           [this.latestGazeResult.faceOrigin3D],
           [[x, y]],
@@ -366,30 +370,21 @@ export default class WebEyeTrack {
   private prepareInput(
       frame: VideoFrameData,
       result: FaceLandmarkerResult
-  ): [ImageData, number[], number[]] {
-    // frameConverter.convert handles VideoFrame/ImageBitmap → ImageData via OffscreenCanvas
-    // TODO: GPU→CPU readback here is variable in timing depending on GPU pipeline state
+  ): [Point[] | null, number[], number[], ImageData] {
     const { imageData, width, height } = this.frameConverter.convert(frame);
     this.ensureCameraMatrices(width, height);
 
-    // Convert normalised [0..1] landmarks to pixel coordinates
     const landmarks = result.faceLandmarks[0];
-    const landmarks2d: Point[] = landmarks.map( // TODO: convert only the landmarks we actually need
+    const landmarks2d: Point[] = landmarks.map(
         (landmark: NormalizedLandmark) => ({
-            x: Math.floor(landmark.x * width),
-            y: Math.floor(landmark.y * height)
+          x: Math.floor(landmark.x * width),
+          y: Math.floor(landmark.y * height)
         })
     );
 
     const faceRT = translateMatrix(result.facialTransformationMatrixes[0]);
+    const eyeQuad = computeEyeQuad(landmarks2d);
 
-    // Extract eye patch — takes tilted/rotated face from camera and
-    //    unwarps to aligned rectangular image of eyes (512x128)
-    // TODO: see https://github.com/google-ai-edge/mediapipe/issues/3495
-    const eyePatch = obtainEyePatch(imageData, landmarks2d);
-
-    // Compute face origin in 3D metric (cm) space
-    //    Uses iris-based face width estimate to determine depth and gaze origin
     if (!this.faceWidthComputed) {
       this.faceWidthCm = estimateFaceWidth(landmarks2d);
       this.faceWidthComputed = true;
@@ -398,8 +393,6 @@ export default class WebEyeTrack {
     const faceOrigin3D = computeMetricFaceOrigin(
         this.perspectiveMatrix!,
         this.intrinsicsMatrix!,
-        // normFaceLandmarks [0..1] needed for faceReconstruction unprojection,
-        // distinct from landmarks2d which are in pixel space
         landmarks.map((l: NormalizedLandmark) => [l.x, l.y] as [number, number]),
         faceRT,
         this.faceWidthCm,
@@ -408,11 +401,9 @@ export default class WebEyeTrack {
         this.latestGazeResult?.faceOrigin3D?.[2] ?? 60
     );
 
-    // Compute head direction vector — converts MediaPipe rotation matrix
-    //    to Euler angles and swaps/negates axes for the gaze model's coordinate system
     const headVector = getHeadVector(faceRT);
 
-    return [eyePatch, headVector, faceOrigin3D];
+    return [eyeQuad, headVector, faceOrigin3D, imageData];
   }
 
   // ==========================================================================
@@ -430,7 +421,6 @@ export default class WebEyeTrack {
 
     if (!result?.faceLandmarks?.length) {
       return {
-        eyePatch: new ImageData(1, 1),
         headVector: [0, 0, 0],
         faceOrigin3D: [0, 0, 0],
         gazeState: "closed",
@@ -440,7 +430,7 @@ export default class WebEyeTrack {
       };
     }
 
-    const [eyePatch, headVector, faceOrigin3D] = this.prepareInput(
+    const [eyeQuad, headVector, faceOrigin3D, imageData] = this.prepareInput(
         frame,
         result
     );
@@ -454,7 +444,6 @@ export default class WebEyeTrack {
 
     if (gazeState === "closed") {
       return {
-        eyePatch,
         headVector,
         faceOrigin3D,
         gazeState,
@@ -464,26 +453,33 @@ export default class WebEyeTrack {
       };
     }
 
-    // BlazeGaze inference — predicts gaze location from the extracted eye patch.
-    // Resolves ambiguity from: faceLandmarker jitter, oval iris shape, iris
-    // squashed by camera lens distortion, etc.
-    // TODO: CPU→GPU transfer (fromPixels) creates variable timing
+    // GPU warp: frame → eye patch tensor directly, no CPU pixel copy
+    const frameTensor = tf.browser.fromPixels(imageData);
+    const warpResult = await warpGPU(frameTensor, eyeQuad!, 512, 128, false);
+    frameTensor.dispose();
+
+    if (!warpResult) {
+      return {
+        headVector,
+        faceOrigin3D,
+        gazeState,
+        normPog: [0, 0],
+        durations: { blazeGaze: 0, kalmanFilter: 0, total: performance.now() - tic1 },
+        timestamp,
+      };
+    }
+
+    // warpResult.tensor is already [1, 128, 512, 3] float32 [0,1]
     const [predNormPog, tic4] = tf.tidy(() => {
-      const normalizedInput = tf.browser
-          .fromPixels(eyePatch)
-          .toFloat()
-          .expandDims(0)
-          .div(tf.scalar(255.0));
       const headVectorTensor = tf.tensor2d(headVector, [1, 3]);
       const faceOriginTensor = tf.tensor2d(faceOrigin3D, [1, 3]);
 
       let output = this.blazeGaze.predict(
-          normalizedInput,
+          warpResult.tensor,
           headVectorTensor,
           faceOriginTensor
       );
 
-      // Apply affine correction if calibration has computed one
       if (this.affineMatrix) {
         output = applyAffineMatrix(this.affineMatrix, output);
       }
@@ -495,18 +491,20 @@ export default class WebEyeTrack {
       return [output, performance.now()];
     });
 
-    // TODO: async GPU→CPU readback — timing depends on GPU pipeline state
+
     const normPog = (await predNormPog.array()) as number[][];
     tf.dispose(predNormPog);
 
-    // Kalman filter + clamp
     const kalmanOutput = this.kalmanFilter.step(normPog[0]);
     kalmanOutput[0] = Math.max(-0.5, Math.min(0.5, kalmanOutput[0]));
     kalmanOutput[1] = Math.max(-0.5, Math.min(0.5, kalmanOutput[1]));
 
+    this.latestEyePatchTensor?.dispose();
+    this.latestEyePatchTensor = warpResult.tensor.clone();
+    warpResult.tensor.dispose();
+
     const tic5 = performance.now();
     const gazeResult: WebEyeTrackResult = {
-      eyePatch,
       headVector,
       faceOrigin3D,
       gazeState,
@@ -517,9 +515,11 @@ export default class WebEyeTrack {
         total: tic5 - tic1,
       },
       timestamp,
+      // debug: {eyePatch: await this.getDebugEyePatch()}
     };
 
     this.latestGazeResult = gazeResult;
+    warpResult.tensor.dispose();
     return gazeResult;
   }
 
@@ -531,7 +531,7 @@ export default class WebEyeTrack {
   // TODO: consider persistent optimiser (avoids recreating momentum buffers each call,
   // but risks stale momentum from old postures)
   async adapt(
-      eyePatches: ImageData[],
+      eyePatches: tf.Tensor4D[],
       headVectors: number[][],
       faceOrigins3D: number[][],
       normPogs: number[][],
@@ -545,6 +545,7 @@ export default class WebEyeTrack {
     const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
 
     try {
+      console.log(eyePatches)
       const { supportX, supportY } = generateSupport(
           eyePatches,
           headVectors,
@@ -688,5 +689,13 @@ export default class WebEyeTrack {
       // that persist until explicitly disposed
       opt.dispose();
     }
+  }
+
+  async getDebugEyePatch(): Promise<ImageData | null> {
+    if (!this.latestEyePatchTensor) return null;
+    const squeezed = this.latestEyePatchTensor.squeeze([0]) as tf.Tensor3D;
+    const pixels = await tf.browser.toPixels(squeezed);
+    squeezed.dispose();
+    return new ImageData(new Uint8ClampedArray(pixels), 512, 128);
   }
 }

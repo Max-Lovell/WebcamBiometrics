@@ -202,7 +202,7 @@ const showResults = (result: BiometricsResult) => {
     }
 
     // ── CPU eye patch ───────────────────────────────────────────────
-    const cpuPatch = result.gaze?.eyePatch;
+    const cpuPatch = result.gaze?.debug?.eyePatch;
     if (cpuPatch && cpuCtx) {
         cpuCanvas.width = cpuPatch.width;
         cpuCanvas.height = cpuPatch.height;
@@ -211,15 +211,16 @@ const showResults = (result: BiometricsResult) => {
 
     // ── GPU eye patch ───────────────────────────────────────────────
     // @ts-ignore
-    if (result.gpuPixels && gpuCtx) {
+    const gpuPatch = result.gaze?.debug?.eyePatchGPU;
+    if (gpuPatch && gpuCtx) {
         const gpuImgData = new ImageData(
             // @ts-ignore
-            new Uint8ClampedArray(result.gpuPixels),
+            new Uint8ClampedArray(gpuPatch),
             512, 128
         );
         gpuCanvas.width = 512;
         gpuCanvas.height = 128;
-        gpuCtx.putImageData(gpuImgData, 0, 0);
+        // gpuCtx.putImageData(gpuImgData, 0, 0);
     }
 
     // ── Output canvas — clear once, draw all overlays ───────────────

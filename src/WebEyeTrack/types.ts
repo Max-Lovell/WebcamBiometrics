@@ -1,6 +1,5 @@
 export interface WebEyeTrackResult {
   // Preprocessing
-  eyePatch: ImageData; // [H, W, 3] - RGB image of the eye region
   headVector: Array<number>; // [3,] - Head vector in camera coordinates
   faceOrigin3D: Array<number>; // X, Y, Z
   // Gaze state (blinking)
