@@ -237,6 +237,12 @@ export function obtainEyePatch(
 }
 
 // TODO: Testing alternative approach to EyePatch
+//  Note this is really quick to compute, but not what BlazeGaze is expecting, and has some wobble
+
+//  to run add to const newEyePatch = altEyePatch(landmarks2d, imageData) to prepareInput and ,any to output array
+//  then grab in output of prepareInput in step() and pass to .fromPixels(eyePatch)
+//  can export different eyePatches in debug output
+//
 function midpoint(point1: Point, point2: Point): Point {
     return {
         x: (point1.x+point2.x)/2,
