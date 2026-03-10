@@ -443,7 +443,6 @@ export default class WebEyeTrack {
       result: FaceLandmarkerResult | null
   ): Promise<WebEyeTrackResult> {
     // console.log('[step] called, has landmarks:', !!result?.faceLandmarks?.length);
-    const tic1 = performance.now();
 
     if (!result?.faceLandmarks?.length) {
       return {
@@ -456,9 +455,9 @@ export default class WebEyeTrack {
       };
     }
 
+    const tic1 = performance.now();
     const [eyeQuad, headVector, faceOrigin3D, frameTensor] = await this.prepareInput(frame, result);
-
-    const tic3 = performance.now();
+    const tic2 = performance.now();
 
     // Blink detection via Eye Aspect Ratio
     const leftEAR = computeEAR(result.faceLandmarks[0], "left");
@@ -479,10 +478,10 @@ export default class WebEyeTrack {
 
     // GPU warp: frame → eye patch tensor directly, no CPU pixel copy
     const warpResult = await warpGPU(frameTensor, eyeQuad!, 512, 128);
-    // console.log('[step] warpResult:', warpResult ? 'ok' : 'null');
+     // console.log('[step] warpResult:', warpResult ? 'ok' : 'null');
     // console.log('warp tensor shape:', warpResult?.tensor.shape);
     frameTensor.dispose();
-
+    const tic3 = performance.now();
     if (!warpResult) {
       return {
         headVector,
@@ -495,7 +494,7 @@ export default class WebEyeTrack {
     }
 
     // warpResult.tensor is already [1, 128, 512, 3] float32 [0,1]
-    const [predNormPog, tic4] = tf.tidy(() => {
+    const [predNormPog] = tf.tidy(() => {
       const headVectorTensor = tf.tensor2d(headVector, [1, 3]);
       const faceOriginTensor = tf.tensor2d(faceOrigin3D, [1, 3]);
 
@@ -515,36 +514,39 @@ export default class WebEyeTrack {
 
       return [output, performance.now()];
     });
-
+    const tic4 = performance.now();
 
     const normPog = (await predNormPog.array()) as number[][];
     tf.dispose(predNormPog);
+    const tic5 = performance.now();
 
     const kalmanOutput = this.kalmanFilter.step(normPog[0]);
     kalmanOutput[0] = Math.max(-0.5, Math.min(0.5, kalmanOutput[0]));
     kalmanOutput[1] = Math.max(-0.5, Math.min(0.5, kalmanOutput[1]));
+    const tic6 = performance.now();
 
     this.latestEyePatchTensor?.dispose();
     this.latestEyePatchTensor = warpResult.tensor.clone();
     warpResult.tensor.dispose();
 
-    const tic5 = performance.now();
     const gazeResult: WebEyeTrackResult = {
       headVector,
       faceOrigin3D,
       gazeState,
       normPog: kalmanOutput,
       durations: {
+        prepareInput: tic2 - tic1,
+        warp: tic3 - tic2,
         blazeGaze: tic4 - tic3,
-        kalmanFilter: tic5 - tic4,
-        total: tic5 - tic1,
+        gpuSync: tic5 - tic4,
+        kalmanFilter: tic6 - tic5,
+        total: tic6 - tic1,
       },
       timestamp,
       // debug: {eyePatch: await this.getDebugEyePatch()}
     };
 
     this.latestGazeResult = gazeResult;
-    warpResult.tensor.dispose();
     return gazeResult;
   }
 
