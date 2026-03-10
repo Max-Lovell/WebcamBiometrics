@@ -24,7 +24,7 @@ import type {
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import type { VideoFrameData } from "../types.ts";
-import {warpGPU} from "./utils/eyePatchWarp.ts";
+import {warpGPU} from "./utils/eyePatch.ts";
 
 // ============================================================================
 // Support Tensor Types

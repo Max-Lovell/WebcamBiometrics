@@ -3,7 +3,7 @@
 // ============================================================================
 
 import type { Point } from "../../types.ts";
-
+import * as tf from "@tensorflow/tfjs";
 // ── Homography (Gaussian elimination, flat output) ──────────────────────────
 // Homography solved via Gaussian elimination (8-param DLT, H[8]=1).
 // No external dependencies — replaces the previous SVD/ml-matrix approach.
@@ -396,4 +396,118 @@ export function rectSourceQuad(
     }
 
     return screenPoints;
+}
+
+export interface WarpGPUResult {
+    tensor: tf.Tensor4D;        // [1, H, W, 3] float32 [0,1] — caller must dispose
+    debugPatch?: ImageData;     // only present when debug=true
+}
+
+function computeBackwardHomography(
+    srcQuad: (Point | [number, number])[],
+    dstW: number,
+    dstH: number,
+): number[] | null {
+    const dst: [number, number][] = [
+        [0, 0], [dstW - 1, 0], [dstW - 1, dstH - 1], [0, dstH - 1],
+    ];
+    // Solve dst → src directly (backward mapping)
+    return solveHomography(dst, srcQuad);
+}
+
+// Solve H mapping from[i] → to[i] for 4 point pairs.
+// Returns flat row-major [h0..h8] with h8=1, or null if degenerate.
+function solveHomography(
+    from: ([number, number] | Point)[],
+    to: ([number, number] | Point)[],
+): number[] | null {
+    const xy = (p: [number, number] | Point): [number, number] =>
+        Array.isArray(p) ? p : [p.x, p.y];
+
+    const A: number[][] = [];
+    const b: number[] = [];
+    for (let i = 0; i < 4; i++) {
+        const [sx, sy] = xy(from[i]);
+        const [dx, dy] = xy(to[i]);
+        A.push([sx, sy, 1, 0, 0, 0, -sx * dx, -sy * dx]);
+        b.push(dx);
+        A.push([0, 0, 0, sx, sy, 1, -sx * dy, -sy * dy]);
+        b.push(dy);
+    }
+
+    const n = 8;
+    const M = A.map((row, i) => [...row, b[i]]);
+
+    for (let col = 0; col < n; col++) {
+        let maxRow = col;
+        let maxVal = Math.abs(M[col][col]);
+        for (let row = col + 1; row < n; row++) {
+            if (Math.abs(M[row][col]) > maxVal) {
+                maxVal = Math.abs(M[row][col]);
+                maxRow = row;
+            }
+        }
+        [M[col], M[maxRow]] = [M[maxRow], M[col]];
+
+        const pivot = M[col][col];
+        if (Math.abs(pivot) < 1e-12) return null;
+
+        for (let j = col; j <= n; j++) M[col][j] /= pivot;
+        for (let row = 0; row < n; row++) {
+            if (row === col) continue;
+            const factor = M[row][col];
+            for (let j = col; j <= n; j++) M[row][j] -= factor * M[col][j];
+        }
+    }
+
+    const h = M.map(row => row[n]);
+    return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+}
+
+
+export async function warpGPU(
+    frameTensor: tf.Tensor3D,
+    srcQuad: Point[] | [number, number][],
+    outWidth: number = 512,
+    outHeight: number = 128,
+    debug: boolean = false,
+): Promise<WarpGPUResult | null> {
+    // tf.image.transform wants the backward mapping (dst → src) as 8 params:
+    //   x' = (a0*x + a1*y + a2) / (c0*x + c1*y + 1)
+    //   y' = (b0*x + b1*y + b2) / (c0*x + c1*y + 1)
+    //
+    // We compute H mapping dst → src directly (no forward + invert).
+    const H = computeBackwardHomography(srcQuad, outWidth, outHeight);
+    if (!H) return null;
+
+    // H is [h0..h8] with h8=1. tf.image.transform expects [a0,a1,a2,b0,b1,b2,c0,c1]
+    // which maps to [h0, h1, h2, h3, h4, h5, h6, h7] — already in the right order.
+    const tfParams = [H[0], H[1], H[2], H[3], H[4], H[5], H[6], H[7]];
+
+    const tensor = tf.tidy(() => {
+        const batched = frameTensor.toFloat().expandDims(0) as tf.Tensor4D;
+        const transforms = tf.tensor2d([tfParams], [1, 8]);
+
+        const warped = tf.image.transform(
+            batched,
+            transforms,
+            'bilinear',
+            'constant',
+            0,
+            [outHeight, outWidth],
+        );
+
+        return warped.div(255) as tf.Tensor4D;
+    });
+
+    let debugPatch: ImageData | undefined;
+    if (debug) {
+        // Pull to CPU for display — squeeze batch dim, toPixels expects [H,W,3] in [0,1]
+        const squeezed = tensor.squeeze([0]) as tf.Tensor3D;
+        const pixels = await tf.browser.toPixels(squeezed);
+        squeezed.dispose();
+        debugPatch = new ImageData(new Uint8ClampedArray(pixels), outWidth, outHeight);
+    }
+
+    return { tensor, debugPatch };
 }
