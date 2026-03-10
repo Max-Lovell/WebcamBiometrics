@@ -294,8 +294,8 @@ export function obtainEyePatch(
     return result;
 }
 
-// ── Alt Eye Patch (oriented bounding box) ───────────────────────────────────
-
+// ── Alt Eye Patch methods ───────────────────────────────────
+// Bounding box from more stable landmarks
 function midpoint(a: Point, b: Point): Point {
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
@@ -339,4 +339,61 @@ export function altEyePatch(
     const H = computeHomography(srcPts, dstPts);
     if (!H) return null;
     return warpImageData(imageData, H, outW, outH);
+}
+
+// A better method to use in future by retraining - just extracts a box (sunglasses) pinned to the face transform.
+// Can be used to extract directly using tf.image.transform. I've got this working manually on a separate repo, can't remember if below works 100% though.
+export function rectSourceQuad(
+    faceMatrix: ArrayLike<number>,
+    frameWidth: number,
+    frameHeight: number,
+    config: {
+        rectHalfW?: number;
+        rectHalfH?: number;
+        rectOffsetY?: number;
+        rectOffsetZ?: number;
+        vfovDeg?: number;
+    } = {},
+): [number, number][] | null {
+    const hw = config.rectHalfW ?? 6;
+    const hh = config.rectHalfH ?? 2;
+    const oy = config.rectOffsetY ?? 3;
+    const oz = config.rectOffsetZ ?? 4;
+    const vfovDeg = config.vfovDeg ?? 63;
+
+    // Camera intrinsics from vertical FOV
+    const cx = frameWidth / 2;
+    const cy = frameHeight / 2;
+    const fy = cy / Math.tan((vfovDeg / 2) * Math.PI / 180);
+    const fx = fy;
+
+    // 4 corners in face-local space (homogeneous coords)
+    const localCorners: [number, number, number, number][] = [
+        [-hw,  hh + oy, oz, 1],  // top-left
+        [ hw,  hh + oy, oz, 1],  // top-right
+        [ hw, -hh + oy, oz, 1],  // bottom-right
+        [-hw, -hh + oy, oz, 1],  // bottom-left
+    ];
+
+    // Transform to camera space and project
+    const screenPoints: [number, number][] = [];
+    for (const corner of localCorners) {
+        // Column-major 4×4 multiply
+        const cam: [number, number, number, number] = [
+            faceMatrix[0]*corner[0] + faceMatrix[4]*corner[1] + faceMatrix[8]*corner[2]  + faceMatrix[12]*corner[3],
+            faceMatrix[1]*corner[0] + faceMatrix[5]*corner[1] + faceMatrix[9]*corner[2]  + faceMatrix[13]*corner[3],
+            faceMatrix[2]*corner[0] + faceMatrix[6]*corner[1] + faceMatrix[10]*corner[2] + faceMatrix[14]*corner[3],
+            faceMatrix[3]*corner[0] + faceMatrix[7]*corner[1] + faceMatrix[11]*corner[2] + faceMatrix[15]*corner[3],
+        ];
+
+        // Pinhole projection (camera looks down -Z)
+        const depth = -cam[2];
+        if (depth <= 0.001) return null;
+        screenPoints.push([
+            fx * (cam[0] / depth) + cx,
+            fy * (-cam[1] / depth) + cy,
+        ]);
+    }
+
+    return screenPoints;
 }
