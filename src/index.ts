@@ -298,7 +298,7 @@ const client = new BiometricsClient('webcam');
 
 client.onResult = (result) => {
     // console.log({result});
-    console.log(result.gaze?.durations)
+    // console.log(result.gaze?.durations)
     result.frameMetadata.trace.push({ step: 'frame_recieved', timestamp: performance.now() });
     const trace = result.frameMetadata.trace;
     // console.log({trace});
