@@ -19,13 +19,13 @@ import {
   getHeadVector,
 } from "./utils/faceOrigin.ts";
 import { KalmanFilter2D } from "./utils/filter.ts";
-import { FrameConverter } from "./utils/frameUtils.ts";
 import type {
   FaceLandmarkerResult,
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import type { VideoFrameData } from "../types.ts";
 import {warpGPU} from "./utils/eyePatchWarp.ts";
+import {FrameConverter} from "./utils/frameUtils.ts";
 
 // ============================================================================
 // Support Tensor Types
@@ -367,11 +367,21 @@ export default class WebEyeTrack {
     }
   }
 
-  private prepareInput(
+  private async prepareInput(
       frame: VideoFrameData,
       result: FaceLandmarkerResult
-  ): [Point[] | null, number[], number[], ImageData] {
-    const { imageData, width, height } = this.frameConverter.convert(frame);
+  ): Promise<[Point[] | null, number[], number[], tf.Tensor3D]> {
+    let width: number;
+    let height: number;
+
+    if (frame instanceof VideoFrame) {
+      width = frame.displayWidth;
+      height = frame.displayHeight;
+    } else {
+      width = frame.width;
+      height = frame.height;
+    }
+
     this.ensureCameraMatrices(width, height);
 
     const landmarks = result.faceLandmarks[0];
@@ -383,6 +393,7 @@ export default class WebEyeTrack {
     );
 
     const faceRT = translateMatrix(result.facialTransformationMatrixes[0]);
+
     const eyeQuad = computeEyeQuad(landmarks2d);
 
     if (!this.faceWidthComputed) {
@@ -403,7 +414,21 @@ export default class WebEyeTrack {
 
     const headVector = getHeadVector(faceRT);
 
-    return [eyeQuad, headVector, faceOrigin3D, imageData];
+    let frameTensor: tf.Tensor3D;
+    if (frame instanceof VideoFrame) {
+      // const { imageData, width, height } = this.frameConverter.convert(frame);
+      const imageData = await createImageBitmap(frame, { colorSpaceConversion: 'default' });
+      frameTensor = tf.browser.fromPixels(imageData);
+    } else {
+      frameTensor = tf.browser.fromPixels(frame as ImageData | ImageBitmap);
+    }
+
+    // console.log('frameTensor shape:', frameTensor.shape);
+    // console.log('frameTensor dtype:', frameTensor.dtype);
+    const sample = frameTensor.slice([0, 0, 0], [1, 1, 3]);
+    // sample.print();
+    sample.dispose();
+    return [eyeQuad, headVector, faceOrigin3D, frameTensor];
   }
 
   // ==========================================================================
@@ -417,6 +442,7 @@ export default class WebEyeTrack {
       timestamp: number,
       result: FaceLandmarkerResult | null
   ): Promise<WebEyeTrackResult> {
+    // console.log('[step] called, has landmarks:', !!result?.faceLandmarks?.length);
     const tic1 = performance.now();
 
     if (!result?.faceLandmarks?.length) {
@@ -430,10 +456,8 @@ export default class WebEyeTrack {
       };
     }
 
-    const [eyeQuad, headVector, faceOrigin3D, imageData] = this.prepareInput(
-        frame,
-        result
-    );
+    const [eyeQuad, headVector, faceOrigin3D, frameTensor] = await this.prepareInput(frame, result);
+
     const tic3 = performance.now();
 
     // Blink detection via Eye Aspect Ratio
@@ -454,8 +478,12 @@ export default class WebEyeTrack {
     }
 
     // GPU warp: frame → eye patch tensor directly, no CPU pixel copy
-    const frameTensor = tf.browser.fromPixels(imageData);
-    const warpResult = await warpGPU(frameTensor, eyeQuad!, 512, 128, false);
+    const warpResult = await warpGPU(frameTensor, eyeQuad!, 512, 128);
+    // console.log('[step] warpResult:', warpResult ? 'ok' : 'null');
+    // console.log('warp tensor shape:', warpResult?.tensor.shape);
+    const warpSample = warpResult?.tensor.slice([0, 0, 0, 0], [1, 1, 1, 3]);
+    // warpSample.print();
+    warpSample?.dispose();
     frameTensor.dispose();
 
     if (!warpResult) {
@@ -545,7 +573,7 @@ export default class WebEyeTrack {
     const opt = tf.train.adam(innerLR, 0.85, 0.9, 1e-8);
 
     try {
-      console.log(eyePatches)
+      // console.log(eyePatches)
       const { supportX, supportY } = generateSupport(
           eyePatches,
           headVectors,

@@ -58,4 +58,25 @@ export class FrameConverter {
 
         return this.ctx;
     }
+
+    getCanvas(frame: VideoFrameData): OffscreenCanvas | HTMLCanvasElement | ImageData {
+        if (frame instanceof ImageData) {
+            return frame; // fromPixels handles ImageData directly
+        }
+
+        let width: number;
+        let height: number;
+
+        if (frame instanceof VideoFrame) {
+            width = frame.displayWidth;
+            height = frame.displayHeight;
+        } else {
+            width = frame.width;
+            height = frame.height;
+        }
+
+        const ctx = this.getContext(width, height);
+        ctx.drawImage(frame as CanvasImageSource, 0, 0);
+        return this.canvas!;
+    }
 }
