@@ -294,6 +294,79 @@ export function obtainEyePatch(
     return result;
 }
 
+// ── Legacy Eye Patch (original two-step warp→crop→resize pipeline) ──────────
+// This replicates the original obtainEyePatch from mathUtils.ts:
+//   1. Homography warp from face quad → 512×512
+//   2. Crop the eye strip from the 512×512 image
+//   3. Homography warp (resize) to 512×128
+// NOTE: this replicates the data that the original webeyetrack was trained on, and so might? be more accurate actually.
+// Leaving this here, although some switching back in WebEyeTrack is needed to actually run it
+export function obtainEyePatchLegacy(
+    frame: ImageData,
+    faceLandmarks: Point[],
+    facePaddingCoefs: [number, number] = [0.4, 0.2],
+    faceCropSize: number = 512,
+    dstImgSize: [number, number] = [512, 128],
+): ImageData {
+    const center = faceLandmarks[4];
+
+    let srcPts: Point[] = [
+        faceLandmarks[103],  // leftTop
+        faceLandmarks[150],  // leftBottom
+        faceLandmarks[379],  // rightBottom
+        faceLandmarks[332],  // rightTop
+    ];
+
+    // Radial padding (same as original)
+    srcPts = srcPts.map(({ x, y }) => ({
+        x: x + (x - center.x) * facePaddingCoefs[0],
+        y: y + (y - center.y) * facePaddingCoefs[1],
+    }));
+
+    const dstPts: Point[] = [
+        { x: 0, y: 0 },
+        { x: 0, y: faceCropSize },
+        { x: faceCropSize, y: faceCropSize },
+        { x: faceCropSize, y: 0 },
+    ];
+
+    // Step 1: Warp full face quad → 512×512
+    const H = computeHomography(srcPts, dstPts);
+    if (!H) return new ImageData(dstImgSize[0], dstImgSize[1]);
+
+    const warped = warpImageData(frame, H, faceCropSize, faceCropSize);
+    if (!warped) return new ImageData(dstImgSize[0], dstImgSize[1]);
+
+    // Step 2: Find eye strip bounds in 512×512 space & crop
+    const topEyes = applyHomography(H, faceLandmarks[151]);
+    const bottomEyes = applyHomography(H, faceLandmarks[195]);
+
+    const cropY = Math.round(topEyes[1]);
+    const cropH = Math.round(bottomEyes[1] - topEyes[1]);
+    if (cropH <= 0) return new ImageData(dstImgSize[0], dstImgSize[1]);
+
+    const eyeStrip = cropImageData(warped, 0, cropY, warped.width, cropH);
+
+    // Step 3: Resize eye strip → 512×128 via a second homography warp
+    const eyeSrcPts: Point[] = [
+        { x: 0, y: 0 },
+        { x: 0, y: eyeStrip.height },
+        { x: eyeStrip.width, y: eyeStrip.height },
+        { x: eyeStrip.width, y: 0 },
+    ];
+    const eyeDstPts: Point[] = [
+        { x: 0, y: 0 },
+        { x: 0, y: dstImgSize[1] },
+        { x: dstImgSize[0], y: dstImgSize[1] },
+        { x: dstImgSize[0], y: 0 },
+    ];
+    const eyeH = computeHomography(eyeSrcPts, eyeDstPts);
+    if (!eyeH) return new ImageData(dstImgSize[0], dstImgSize[1]);
+
+    const result = warpImageData(eyeStrip, eyeH, dstImgSize[0], dstImgSize[1]);
+    return result ?? new ImageData(dstImgSize[0], dstImgSize[1]);
+}
+
 // ── Alt Eye Patch methods ───────────────────────────────────
 // Bounding box from more stable landmarks
 function midpoint(a: Point, b: Point): Point {
