@@ -450,7 +450,6 @@ export default class WebEyeTrack {
     const [predNormPog] = tf.tidy(() => {
       const headVectorTensor = tf.tensor2d(headVector, [1, 3]);
       const faceOriginTensor = tf.tensor2d(faceOrigin3D, [1, 3]);
-
       let output = this.blazeGaze.predict(
           warpResult.tensor,
           headVectorTensor,
@@ -468,7 +467,7 @@ export default class WebEyeTrack {
       return [output, performance.now()];
     });
     const tic4 = performance.now();
-
+    // TODO: note everything up to here could be run separately, and then awaiting this is where HeartRate etc can run in between.
     const normPog = (await predNormPog.array()) as number[][];
     tf.dispose(predNormPog);
     const tic5 = performance.now();
@@ -519,6 +518,7 @@ export default class WebEyeTrack {
       innerLR: number = 1e-5,    // matches Python webeyetrack.py:325
       ptType: "calib" | "click" = "calib"
   ): Promise<void> {
+    // TODO: two .array calls here could be avoided - affine transformation in TF.js ops would avoid that.
     // Prune old clickstream data (calibration buffer is never pruned)
     this.pruneCalibData();
 
