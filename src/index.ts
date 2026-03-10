@@ -198,7 +198,11 @@ const showResults = (result: BiometricsResult) => {
         const vh = document.documentElement.clientHeight || window.innerHeight;
         cursor.style.left = `${(normPog[0] + 0.5) * vw}px`;
         cursor.style.top = `${(normPog[1] + 0.5) * vh}px`;
-        cursor.style.backgroundColor = result.gaze!.gazeState === 'closed' ? 'gray' : 'red';
+        cursor.style.backgroundColor = result.gaze!.gazeState === 'closed' ? 'gray' : 'purple';
+    }
+
+    if (normPog && result.gaze?.gazeState === 'open') {
+        trackAccuracy(normPog);
     }
 
     // ── CPU eye patch ───────────────────────────────────────────────
@@ -294,6 +298,7 @@ const client = new BiometricsClient('webcam');
 
 client.onResult = (result) => {
     // console.log({result});
+    console.log(result.gaze?.durations)
     result.frameMetadata.trace.push({ step: 'frame_recieved', timestamp: performance.now() });
     const trace = result.frameMetadata.trace;
     // console.log({trace});
@@ -323,6 +328,69 @@ client.onResult = (result) => {
 
     showResults(result);
 };
+
+
+// ─── Accuracy tracker ───────────────────────────────────────────────────────
+const target = document.createElement('div');
+target.style.cssText = 'position:fixed;top:50%;left:50%;width:12px;height:12px;border-radius:50%;background:lime;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;display:none;';
+document.body.appendChild(target);
+
+const accuracyDisplay = document.createElement('div');
+accuracyDisplay.style.cssText = 'position:fixed;top:10px;left:10px;color:lime;font-family:monospace;font-size:14px;z-index:9999;background:rgba(0,0,0,0.7);padding:8px;display:none;';
+document.body.appendChild(accuracyDisplay);
+
+const ACCURACY_BUF = 300;
+const distBuf = new Float64Array(ACCURACY_BUF);
+let distHead = 0;
+let distCount = 0;
+let distSum = 0;
+let trackingActive = false;
+
+function resetAccuracy() {
+    distHead = 0;
+    distCount = 0;
+    distSum = 0;
+    distBuf.fill(0);
+}
+
+function toggleTracking() {
+    trackingActive = !trackingActive;
+    target.style.display = trackingActive ? 'block' : 'none';
+    accuracyDisplay.style.display = trackingActive ? 'block' : 'none';
+    if (trackingActive) resetAccuracy();
+    console.log(`Accuracy tracking: ${trackingActive ? 'ON' : 'OFF'}`);
+}
+
+// Press T to toggle
+window.addEventListener('keydown', (e) => {
+    if (e.key === 't' || e.key === 'T') toggleTracking();
+});
+
+function trackAccuracy(normPog: number[]) {
+    if (!trackingActive) return;
+
+    const dist = Math.sqrt(normPog[0] ** 2 + normPog[1] ** 2);
+
+    if (distCount === ACCURACY_BUF) distSum -= distBuf[distHead];
+    distBuf[distHead] = dist;
+    distSum += dist;
+    distHead = (distHead + 1) % ACCURACY_BUF;
+    if (distCount < ACCURACY_BUF) distCount++;
+
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < distCount; i++) {
+        if (distBuf[i] < min) min = distBuf[i];
+        if (distBuf[i] > max) max = distBuf[i];
+    }
+
+    const avg = distSum / distCount;
+    let varSum = 0;
+    for (let i = 0; i < distCount; i++) varSum += (distBuf[i] - avg) ** 2;
+    const stddev = Math.sqrt(varSum / distCount);
+
+    accuracyDisplay.innerText =
+        `Dist: ${dist.toFixed(4)} | Avg: ${avg.toFixed(4)} | Jitter: ${stddev.toFixed(4)} | Range: ${min.toFixed(4)}-${max.toFixed(4)} | n=${distCount}`;
+}
 
 client.onWebcamStatus = (status, msg) => {
     console.log(`Webcam: ${status}`, msg);
