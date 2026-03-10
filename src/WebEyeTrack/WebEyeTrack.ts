@@ -481,9 +481,6 @@ export default class WebEyeTrack {
     const warpResult = await warpGPU(frameTensor, eyeQuad!, 512, 128);
     // console.log('[step] warpResult:', warpResult ? 'ok' : 'null');
     // console.log('warp tensor shape:', warpResult?.tensor.shape);
-    const warpSample = warpResult?.tensor.slice([0, 0, 0, 0], [1, 1, 1, 3]);
-    // warpSample.print();
-    warpSample?.dispose();
     frameTensor.dispose();
 
     if (!warpResult) {
