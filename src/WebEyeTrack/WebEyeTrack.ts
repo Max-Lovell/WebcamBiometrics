@@ -94,7 +94,7 @@ export interface WebEyeTrackOptions {
 export default class WebEyeTrack {
   // Internal state
   private blazeGaze: BlazeGaze;
-  private frameConverter = new FrameConverter();
+  // private frameConverter = new FrameConverter();
   private kalmanFilter: KalmanFilter2D;
   private _disposed: boolean = false;
 
@@ -158,7 +158,7 @@ export default class WebEyeTrack {
 
   async initialize(modelPath?: string): Promise<void> {
     await this.blazeGaze.loadModel(modelPath);
-    await this.warmup();
+    // await this.warmup();
     this.loaded = true;
   }
 
@@ -425,9 +425,9 @@ export default class WebEyeTrack {
 
     // console.log('frameTensor shape:', frameTensor.shape);
     // console.log('frameTensor dtype:', frameTensor.dtype);
-    const sample = frameTensor.slice([0, 0, 0], [1, 1, 3]);
+    // const sample = frameTensor.slice([0, 0, 0], [1, 1, 3]);
     // sample.print();
-    sample.dispose();
+    // sample.dispose();
     return [eyeQuad, headVector, faceOrigin3D, frameTensor];
   }
 
