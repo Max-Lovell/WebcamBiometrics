@@ -25,7 +25,6 @@ import type {
 } from "@mediapipe/tasks-vision";
 import type { VideoFrameData } from "../types.ts";
 import {warpGPU} from "./utils/eyePatchWarp.ts";
-import {FrameConverter} from "./utils/frameUtils.ts";
 
 // ============================================================================
 // Support Tensor Types
@@ -160,52 +159,6 @@ export default class WebEyeTrack {
     await this.blazeGaze.loadModel(modelPath);
     // await this.warmup();
     this.loaded = true;
-  }
-
-  // Pre-warms the TensorFlow.js execution pipeline with dummy forward/backward
-  // passes to compile WebGL shaders before first real usage.
-  private async warmup(): Promise<void> {
-    const warmupStart = performance.now();
-
-    // Two iterations is enough to compile shaders for both forward and backward paths
-    for (let iteration = 1; iteration <= 2; iteration++) {
-      await tf.nextFrame();
-
-      const dummyEyePatch = tf.randomUniform([1, 128, 512, 3], 0, 1);
-      const dummyHeadVector = tf.randomUniform([1, 3], -1, 1);
-      const dummyFaceOrigin3D = tf.randomUniform([1, 3], -100, 100);
-      const dummyTarget = tf.randomUniform([1, 2], -0.5, 0.5);
-
-      // Forward pass
-      tf.tidy(() => {
-        this.blazeGaze.predict(
-            dummyEyePatch,
-            dummyHeadVector,
-            dummyFaceOrigin3D
-        );
-      });
-
-      // Backward pass
-      const opt = tf.train.adam(1e-5, 0.85, 0.9, 1e-8);
-      tf.tidy(() => {
-        const { grads } = tf.variableGrads(() => {
-          const preds = this.blazeGaze.predict(
-              dummyEyePatch,
-              dummyHeadVector,
-              dummyFaceOrigin3D
-          );
-          return tf.losses.meanSquaredError(dummyTarget, preds).asScalar();
-        });
-        opt.applyGradients(grads as Record<string, tf.Variable>);
-      });
-
-      opt.dispose();
-      tf.dispose([dummyEyePatch, dummyHeadVector, dummyFaceOrigin3D, dummyTarget]);
-    }
-
-    console.log(
-        `TensorFlow.js warmup complete in ${(performance.now() - warmupStart).toFixed(2)}ms`
-    );
   }
 
   dispose(): void {
@@ -471,7 +424,7 @@ export default class WebEyeTrack {
         faceOrigin3D,
         gazeState,
         normPog: [0, 0],
-        durations: { blazeGaze: 0, kalmanFilter: 0, total: tic3 - tic1 },
+        durations: { },
         timestamp,
       };
     }
@@ -488,7 +441,7 @@ export default class WebEyeTrack {
         faceOrigin3D,
         gazeState,
         normPog: [0, 0],
-        durations: { blazeGaze: 0, kalmanFilter: 0, total: performance.now() - tic1 },
+        durations: { },
         timestamp,
       };
     }
