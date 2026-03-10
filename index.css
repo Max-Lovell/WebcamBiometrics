@@ -1,6 +1,6 @@
 body {
     margin: 0;
-    background-color: #222;
+    background-color: 'white';
     /* Use dvh to account for mobile address bars */
     height: 100dvh;
     width: 100dvw;
