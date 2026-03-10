@@ -24,10 +24,10 @@ body {
 }
 #cursor {
     position: fixed;
-    width: 20px;
-    height: 20px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    background-color: red;
+    background-color: purple;
     pointer-events: none;
     z-index: 9999;
     transform: translate(-50%, -50%);
