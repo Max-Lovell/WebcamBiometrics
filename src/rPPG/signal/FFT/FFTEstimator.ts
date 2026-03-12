@@ -102,17 +102,28 @@ export class FFTEstimator {
     }
 
     // ─── Internals ──────────────────────────────────────────────────────
-    // Batch-filter the raw signal through a fresh bandpass filter.
+    // Batch-filter the raw signal with a forward-backward (filtfilt) pass.
+    // Forward pass applies the filter causally, reverse pass cancels phase
+    // distortion and eliminates the startup transient at the beginning.
+    // Effectively doubles the filter order (2nd-order biquad × 2 = 4th-order Butterworth).
     private batchFilter(rawSignal: Float32Array): Float32Array {
-        // Uses a new filter instance each time to avoid transient bleed from previous estimations.
-        const filter = BandpassFilter.fromBPM(
+        const len = rawSignal.length;
+        const makeFilter = () => BandpassFilter.fromBPM(
             this.config.minBPM,
             this.config.maxBPM,
             this.config.sampleRate
         );
 
-        for (let i = 0; i < rawSignal.length; i++) {
-            this.filteredWork[i] = filter.process(rawSignal[i]);
+        // Forward pass
+        const forward = makeFilter();
+        for (let i = 0; i < len; i++) {
+            this.filteredWork[i] = forward.process(rawSignal[i]);
+        }
+
+        // Backward pass (reverse the forward output, filter, reverse back)
+        const backward = makeFilter();
+        for (let i = len - 1; i >= 0; i--) {
+            this.filteredWork[i] = backward.process(this.filteredWork[i]);
         }
 
         return this.filteredWork;
