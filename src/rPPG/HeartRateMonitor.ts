@@ -3,7 +3,7 @@
  * Once per frame: ROIExtractor (Tier 1) → PulseProcessor (Tier 2) → Estimators (Tier 3)
  *
  * This class owns no signal processing state — it composes the lower tiers
- * and handles fusion logic (cross-validating peak vs FFT estimates).
+ * and exposes raw estimator outputs directly (no fusion/smoothing layer).
  *
  * Usage (simple):
  *   const monitor = new HeartRateMonitor();
@@ -30,10 +30,6 @@ import type { PeakResult } from './signal/PeakEstimator';
 import {FFTEstimator, type FFTEstimatorConfig} from './signal/FFT/FFTEstimator.ts';
 import type { FFTEstimate } from './signal/FFT/FFTEstimator.ts';
 
-import { createSmoother } from './signal/smoothing/TemporalSmoothing.ts';
-import type { BPMSmoother, SmoothingStrategy } from './signal/smoothing/TemporalSmoothing.ts';
-// import { fuseBPM, getFusionConfidence } from './signal/smoothing/BPMFusion';
-
 import type { PipelineConfig, RGB } from './types';
 import { DEFAULT_PIPELINE_CONFIG } from './types';
 import { BandpassFilter } from "./signal/BandpassFilter.ts";
@@ -44,12 +40,6 @@ import { createMethod } from './pulse/registry';
 // import {CHROM} from "./pulse/projection/CHROM.ts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-export interface SmoothingConfig {
-    strategy: SmoothingStrategy;
-    window: number;
-    alpha: number;
-}
-
 export interface HeartRateMonitorConfig {
     pipeline: PipelineConfig;
     // Projection methods — names from registry (e.g., 'POS', 'CHROM') or pass WindowedPulseMethod instances directly
@@ -59,7 +49,6 @@ export interface HeartRateMonitorConfig {
     // Both present = fused mode (cross-validate peak vs FFT). TODO: remove fused mode
     peak?: Partial<PeakEstimatorConfig>;
     fft?: Partial<FFTEstimatorConfig>;
-    smoothing: SmoothingConfig;
 }
 
 export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
@@ -68,7 +57,7 @@ export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
     maxConsecutiveMisses: 30,
     pulse: { // TODO: rename to BPV?
         posWindowMultiplier: 1.6,
-        signalWindowSeconds: 15,
+        signalWindowSeconds: 10,
         maxConsecutiveMisses: 3,
         interpolate: true,
     },
@@ -84,11 +73,6 @@ export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
     fft: {
         estimateInterval: 15,
     },
-    smoothing: {
-        strategy: 'median',
-        window: 5,
-        alpha: 0.3,
-    },
 };
 
 // Per-region data (for visualization)
@@ -101,9 +85,6 @@ export interface RegionDetail { // TODO: export raw RGB as 1d array for PCA appr
 // Full result from processFrame()
 export interface HeartRateResult {
     timestamp: number;
-    status: 'pending' | 'ready'; //'pending' until the signal buffer has filled and an estimator has produced output.
-    bpm: number | null; // BPM estimate — null while status is 'pending'.
-    confidence: number; // Confidence in the estimate, 0 while pending.
     signal: { // Waveform data for real-time plotting
         raw: number | null; // Fused BPV sample (pre-bandpass) — null if no sample this frame
         filtered: number | null; // Post-bandpass filtered sample — null if no sample this frame
@@ -136,7 +117,6 @@ function mergeConfig(
         fft: 'fft' in overrides
             ? (overrides.fft ? { ...defaults.fft, ...overrides.fft } : undefined)
             : defaults.fft,
-        smoothing: { ...defaults.smoothing, ...overrides.smoothing },
     };
 }
 // ─── HeartRateMonitor Class ─────────────────────────────────────────────────
@@ -150,11 +130,8 @@ export class HeartRateMonitor {
     private readonly bandpass: BandpassFilter;
     readonly peak: PeakEstimator | null;
     readonly fft: FFTEstimator | null;
-    private readonly smoother: BPMSmoother;
 
     // State
-    private lastBPM: number | null = null;
-    private lastConfidence: number = 0;
     private consecutiveEmpty = 0;
 
     constructor(config?: Partial<HeartRateMonitorConfig>, rois?: LandmarkerROIs, methodInstances?: WindowedPulseMethod[]) {
@@ -185,12 +162,6 @@ export class HeartRateMonitor {
         this.fft = cfg.fft
             ? new FFTEstimator(this.pulse.signalLength, { ...pipeline, ...cfg.fft })
             : null;
-
-        this.smoother = createSmoother( // Unused at this point.
-            cfg.smoothing.strategy,
-            cfg.smoothing.window,
-            cfg.smoothing.alpha,
-        );
     }
 
     // ─── Public API ─────────────────────────────────────────────────────
@@ -245,8 +216,6 @@ export class HeartRateMonitor {
             if (fftResult) estimators.fft = fftResult;
         }
 
-        this.resolveBPM(estimators);
-
         const regions: Record<string, RegionDetail> = {};
         for (const [name, roiRegion] of Object.entries(roiResult)) {
             regions[name] = {
@@ -255,20 +224,9 @@ export class HeartRateMonitor {
                 pulse: pulseFrame.regionPulses[name] ?? null,
             };
         }
-        const hasEstimate = this.lastBPM !== null;
-
-        // Fusion + Smoothing - TODO: look into this, might be a nice step later.
-        // const fusedBPM = fuseBPM(this.config.method, raw.peak ?? null, raw.fft ?? null);
-        // if (fusedBPM !== null) {
-        //     this.lastBPM = this.smoother.update(fusedBPM);
-        //     this.lastConfidence = getFusionConfidence(this.config.method, raw.peak ?? null, raw.fft ?? null);
-        // }
 
         return {
             timestamp: time,
-            status: hasEstimate ? 'ready' : 'pending',
-            bpm: this.lastBPM,
-            confidence: this.lastConfidence,
             signal: {
                 raw: latestRawSample,
                 filtered: filteredSample,
@@ -285,24 +243,6 @@ export class HeartRateMonitor {
         this.pulse.reset();
         this.peak?.reset();
         this.fft?.reset();
-        this.smoother.reset();
-        this.lastBPM = null;
-        this.lastConfidence = 0;
         this.consecutiveEmpty = 0;
-    }
-
-    private resolveBPM(estimators: HeartRateResult['estimators']): void {
-        // FFT takes priority — more stable over time
-        if (estimators.fft) {
-            this.lastBPM = this.smoother.update(estimators.fft.bpm);
-            this.lastConfidence = estimators.fft.confidence ?? 0;
-            return;
-        }
-
-        if (estimators.peak) {
-            this.lastBPM = this.smoother.update(estimators.peak.bpm);
-            this.lastConfidence = estimators.peak.confidence;
-            return;
-        }
     }
 }
