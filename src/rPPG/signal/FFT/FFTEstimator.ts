@@ -12,11 +12,13 @@ import { DEFAULT_PIPELINE_CONFIG } from '../../types.ts';
 
 export interface FFTEstimatorConfig extends PipelineConfig {
     estimateInterval: number; // Re-estimate every N frames - default 15
+    harmonicRejection: boolean;
 }
 
 export const DEFAULT_FFT_CONFIG: FFTEstimatorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
     estimateInterval: 15,
+    harmonicRejection: false,
 };
 
 export interface FFTEstimate {

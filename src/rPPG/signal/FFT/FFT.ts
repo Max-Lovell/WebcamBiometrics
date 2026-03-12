@@ -4,7 +4,8 @@
  */
 
 import { bpmToHz, hzToBpm } from '../../utils/math.ts';
-import {DEFAULT_PIPELINE_CONFIG, type PipelineConfig} from "../../types.ts";
+import {DEFAULT_PIPELINE_CONFIG} from "../../types.ts";
+import type {FFTEstimatorConfig} from "./FFTEstimator.ts";
 
 // ─── Windowing ───────────────────────────────────────────────────────────────
 // Generate a Hanning window of length N - computed once and cached
@@ -158,9 +159,9 @@ export interface DominantFrequencyResult {
 // Find dominant frequency within a BPM range from a spectrum.
 export function findDominantFrequency(
     spectrum: SpectrumResult, // Output from computeSpectrum()
-    config: Partial<PipelineConfig> = {}
+    config: Partial<FFTEstimatorConfig> = {}
 ): DominantFrequencyResult | null {
-    const { minBPM, maxBPM } = { ...DEFAULT_PIPELINE_CONFIG, ...config };
+    const { minBPM, maxBPM, harmonicRejection } = { ...DEFAULT_PIPELINE_CONFIG, ...config };
     const { magnitudes, frequencies, frequencyResolution } = spectrum;
 
     const minHz = bpmToHz(minBPM);
@@ -198,27 +199,30 @@ export function findDominantFrequency(
     // so prefer sub-harmonic if has reasonable power.
     // TODO: Harmonic correction: if peak = 2* FFT, probably a diacrotic notch double counted too.
     //  or iterative approach — check f/2, then check that result's f/2, stop when leaves valid band
-    const subHarmonicHz = (peakBin * frequencyResolution) / 2;
-    const subHarmonicMinHz = bpmToHz(minBPM);
+    if (harmonicRejection) {
+        const subHarmonicHz = (peakBin * frequencyResolution) / 2;
 
-    if (subHarmonicHz >= subHarmonicMinHz) {
-        const subBinCenter = subHarmonicHz / frequencyResolution; // Find the bin closest to f/2
-        // Search window around expected sub-harmonic (±2 bins) as might not be exactly 2× bin center
-        const searchStart = Math.max(startBin, Math.floor(subBinCenter - 2));
-        const searchEnd = Math.min(endBin, Math.ceil(subBinCenter + 2));
-        let subPeakBin = searchStart;
-        let subPeakMag = magnitudes[searchStart];
-        for (let k = searchStart + 1; k <= searchEnd; k++) {
-            if (magnitudes[k] > subPeakMag) {
-                subPeakMag = magnitudes[k];
-                subPeakBin = k;
+        if (subHarmonicHz >= bpmToHz(minBPM)) {
+            const subBinCenter = subHarmonicHz / frequencyResolution;
+            // ±2 bins, but clamped strictly inside valid band
+            const searchStart = Math.max(startBin, Math.floor(subBinCenter) - 2);
+            const searchEnd = Math.min(endBin, Math.ceil(subBinCenter) + 2);
+
+            if (searchStart <= searchEnd) {
+                let subPeakBin = searchStart;
+                let subPeakMag = magnitudes[searchStart];
+                for (let k = searchStart + 1; k <= searchEnd; k++) {
+                    if (magnitudes[k] > subPeakMag) {
+                        subPeakMag = magnitudes[k];
+                        subPeakBin = k;
+                    }
+                }
+                const SUB_HARMONIC_THRESHOLD = 0.4;
+                if (subPeakMag >= peakMag * SUB_HARMONIC_THRESHOLD) {
+                    peakBin = subPeakBin;
+                    peakMag = subPeakMag;
+                }
             }
-        }
-        // Accept sub-harmonic if at least 40% of dominant peak. Intentionally generous threshold - 2nd typically 30-60% of 1st
-        const SUB_HARMONIC_THRESHOLD = 0.4;
-        if (subPeakMag >= peakMag * SUB_HARMONIC_THRESHOLD) {
-            peakBin = subPeakBin;
-            peakMag = subPeakMag;
         }
     }
 
