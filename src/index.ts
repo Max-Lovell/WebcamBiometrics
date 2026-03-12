@@ -79,7 +79,6 @@ const showResults = (result: BiometricsResult) => {
             );
         }
         drawPulseMask(heartRateResult.regions, webcamOverlayCtx, webcamOverlayCanvas.width, webcamOverlayCanvas.height)
-        console.log(heartRateResult)
         const fft = heartRateResult.bpm
         const peakBPM = heartRateResult.estimators.peak?.bpm
         bpmDisplay.innerText = fft ? `BPM FFT: ${Math.round(fft)}` : "Processing...";
