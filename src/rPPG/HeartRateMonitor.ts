@@ -54,6 +54,7 @@ export interface HeartRateMonitorConfig {
     pipeline: PipelineConfig;
     // Projection methods — names from registry (e.g., 'POS', 'CHROM') or pass WindowedPulseMethod instances directly
     projectionMethods: string[];
+    maxConsecutiveMisses: number;
     pulse: Partial<PulseProcessorConfig>;
     // Both present = fused mode (cross-validate peak vs FFT). TODO: remove fused mode
     peak?: Partial<PeakEstimatorConfig>;
@@ -64,6 +65,7 @@ export interface HeartRateMonitorConfig {
 export const DEFAULT_MONITOR_CONFIG: HeartRateMonitorConfig = {
     pipeline: { ...DEFAULT_PIPELINE_CONFIG },
     projectionMethods: ['POS'],
+    maxConsecutiveMisses: 30,
     pulse: { // TODO: rename to BPV?
         posWindowMultiplier: 1.6,
         signalWindowSeconds: 15,
@@ -125,6 +127,7 @@ function mergeConfig(
     return {
         pipeline: { ...defaults.pipeline, ...overrides.pipeline },
         projectionMethods: overrides.projectionMethods ?? defaults.projectionMethods,
+        maxConsecutiveMisses: overrides.maxConsecutiveMisses ?? defaults.maxConsecutiveMisses ?? 0,
         pulse: { ...defaults.pulse, ...overrides.pulse },
         // Estimators: explicit undefined disables; omitted key inherits default
         peak: 'peak' in overrides
@@ -152,6 +155,7 @@ export class HeartRateMonitor {
     // State
     private lastBPM: number | null = null;
     private lastConfidence: number = 0;
+    private consecutiveEmpty = 0;
 
     constructor(config?: Partial<HeartRateMonitorConfig>, rois?: LandmarkerROIs, methodInstances?: WindowedPulseMethod[]) {
         this.config = mergeConfig(DEFAULT_MONITOR_CONFIG, config);
@@ -209,6 +213,18 @@ export class HeartRateMonitor {
         let latestRawSample: number | null = null;
         let peakDetected = false;
 
+        if (pulseFrame.fusedSamples.length === 0) {
+            this.consecutiveEmpty++;
+            if (this.consecutiveEmpty === this.config.maxConsecutiveMisses) {
+                this.bandpass.reset();
+                this.peak?.reset(); // peak detector state also goes stale
+            } else if (this.consecutiveEmpty > this.config.pipeline.sampleRate * 2) {
+                this.reset(); // full reset — signal is too old
+            }
+        } else {
+            this.consecutiveEmpty = 0;
+        }
+
         for (const { value, time: sampleTime } of pulseFrame.fusedSamples) {
             latestRawSample = value;
 
@@ -265,6 +281,7 @@ export class HeartRateMonitor {
     }
 
     reset(): void {
+        this.bandpass.reset();
         this.pulse.reset();
         this.peak?.reset();
         this.fft?.reset();
