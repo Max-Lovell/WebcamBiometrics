@@ -258,6 +258,7 @@ export class PulseProcessor {
         }
 
         // Overlap-add into fused buffer
+        this.fusedSignalBuffer[this.fusedWriteIndex] = 0;
         const windowStart = (
             this.fusedWriteIndex - hLen + 1 + this.signalCapacity
         ) % this.signalCapacity;
