@@ -22,11 +22,11 @@ export class GazeStage implements Stage {
 
     constructor(config: GazeStageConfig = {}) {
         this.tracker = new WebEyeTrack(
-            config.maxPoints,
-            config.clickTTL,
-            config.maxCalibPoints,
-            config.maxClickPoints,
-        );
+            {
+                maxCalibPoints: config.maxCalibPoints,
+                maxClickPoints: config.maxClickPoints,
+                clickTTL: config.clickTTL,
+            });
         this.modelPath = config.modelPath;
     }
 
