@@ -29,7 +29,7 @@ export interface PulseProcessorConfig extends PipelineConfig {
 export const DEFAULT_PULSE_CONFIG: PulseProcessorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
     posWindowMultiplier: 1.6, // From the POS paper: l = fps × 1.6 ≈ 32 frames at 20fps.
-    signalWindowSeconds: 15,
+    signalWindowSeconds: 10,
     maxConsecutiveMisses: 3,
     interpolate: true,
 };
