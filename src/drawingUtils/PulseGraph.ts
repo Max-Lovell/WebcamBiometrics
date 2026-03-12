@@ -50,7 +50,7 @@ export class PulseGraph {
         this.frameCounter++;
         if (peakDetected) this.peaks.push(this.frameCounter);
         this.raw.push(signal);
-        if (filteredSignal !== null) this.filtered.push(filteredSignal);
+        this.filtered.push(filteredSignal ?? 0);
         this.draw();
     }
 
