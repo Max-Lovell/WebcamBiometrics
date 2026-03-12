@@ -18,7 +18,7 @@ export interface FFTEstimatorConfig extends PipelineConfig {
 export const DEFAULT_FFT_CONFIG: FFTEstimatorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
     estimateInterval: 15,
-    harmonicRejection: false,
+    harmonicRejection: true,
 };
 
 export interface FFTEstimate {
