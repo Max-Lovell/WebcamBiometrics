@@ -18,6 +18,9 @@ const eyePatchCtx = eyePatchCanvas.getContext('2d');
 const webcamOverlayCanvas = document.getElementById('webcamCanvas') as HTMLCanvasElement;
 const webcamOverlayCtx = webcamOverlayCanvas.getContext('2d')!;
 
+let displayedFFT = '';
+let displayedPeak = '';
+
 const traceDisplay = new TraceDisplay(
     document.getElementById('stats') as HTMLDivElement,
     60 // last 60 frames
@@ -69,6 +72,7 @@ const showResults = (result: BiometricsResult) => {
 
     // ── Heart rate regions + graph ──────────────────────────────────
     if (result.heart) {
+        console.log(result.heart);
         syncWebcamCanvas();
         const heartRateResult = result.heart;
         if (heartRateResult.signal.raw !== null) {
@@ -79,10 +83,16 @@ const showResults = (result: BiometricsResult) => {
             );
         }
         drawPulseMask(heartRateResult.regions, webcamOverlayCtx, webcamOverlayCanvas.width, webcamOverlayCanvas.height)
-        const fft = heartRateResult.bpm
-        const peakBPM = heartRateResult.estimators.peak?.bpm
-        bpmDisplay.innerText = fft ? `BPM FFT: ${Math.round(fft)}` : "Processing...";
-        bpmDisplay.innerText += peakBPM ? ` | Live: ${Math.round(peakBPM)}` : ''
+        // console.log(heartRateResult)
+        const fftBPM = heartRateResult.estimators.fft?.bpm
+        const newFFT = fftBPM ? `FFT: ${Math.round(fftBPM)}` : 'Processing...';
+        if (newFFT !== displayedFFT) displayedFFT = newFFT;
+        if (heartRateResult.signal.peakDetected && heartRateResult.estimators.peak?.bpm) {
+            displayedPeak = ` | Live: ${Math.round(heartRateResult.estimators.peak.bpm)}`;
+        }
+
+        const text = `BPM ${displayedFFT}${displayedPeak}`;
+        if (bpmDisplay.innerText !== text) bpmDisplay.innerText = text;
     }
 };
 
