@@ -1,5 +1,6 @@
 /**
  * RGBBuffer — Per-region RGB collection with uniform resampling.
+ * // TODO: maybe separate out the interpolator from here.
  */
 
 import { FloatRingBuffer } from '../FloatRingBuffer.ts';
@@ -292,6 +293,7 @@ export class RGBBuffer {
         time: number
     ): BufferTick[] {
         const maxMisses = this.config.maxConsecutiveMisses;
+        const maxGapMs = this.config.maxConsecutiveMisses * this.gridIntervalMs;
         const excludedRegions = new Set<string>();
 
         // Feed real-frame RGB into each region's InterpolationState
@@ -311,6 +313,16 @@ export class RGBBuffer {
 
         // Establish grid epoch on first frame and return no output — need two frames to interpolate
         if (this.gridEpoch < 0) {
+            this.gridEpoch = time;
+            this.lastFrameTime = time;
+            return [];
+        }
+
+        // Gap too large — re-anchor the grid instead of backfilling
+        if (time - this.lastFrameTime > maxGapMs) {
+            for (const state of Object.values(this.regions)) {
+                state.interpolation.reset();
+            }
             this.gridEpoch = time;
             this.lastFrameTime = time;
             return [];
