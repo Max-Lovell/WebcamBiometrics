@@ -37,6 +37,7 @@ export class FFTEstimator {
     private readonly filteredWork: Float32Array; // Pre-allocated work array for batch-filtered signal
     private frameCount: number = 0; // Frame counter for rate limiting
     private lastEstimate: FFTEstimate | null = null; // Most recent estimate (returned between re-estimations)
+    private _freshEstimate: boolean = false; // True only on frames where a new FFT was computed
     constructor(signalLength: number, config?: Partial<FFTEstimatorConfig>) {
         this.config = { ...DEFAULT_FFT_CONFIG, ...config };
         this.window = hanningWindow(signalLength);
@@ -46,20 +47,25 @@ export class FFTEstimator {
     // ─── Public API ─────────────────────────────────────────────────────
     // Per-frame update with internal rate limiting. Call every frame with the raw fused signal (or null if not ready).
     update(rawSignal: Float32Array | null): FFTEstimate | null {
+        this._freshEstimate = false;
         this.frameCount++;
         // Only actually runs bandpass + FFT every `estimateInterval` frames.
         if (rawSignal && this.frameCount >= this.config.estimateInterval) {
             this.frameCount = 0;
             this.estimate(rawSignal);
+            this._freshEstimate = true;
         }
 
         return this.lastEstimate; // Returns the latest estimate (which may be from a previous run).
     }
 
+    // True only on the frame where a new FFT estimate was computed (not cached)
+    get freshEstimate(): boolean {
+        return this._freshEstimate;
+    }
+
     // Force an immediate estimation, bypassing rate limiting. Batch-filters the signal internally before running FFT.
     estimate(rawSignal: Float32Array): FFTEstimate | null {
-        // TODO: Fresh filter is slightly wasteful. Could run filter forward, reverse output, re-run, reverse back (filtfilt-style)
-        // Batch filter with a fresh bandpass (clean state, no transient bleed)
         const filtered = this.batchFilter(rawSignal);
 
         const spectrum = computeSpectrum(filtered, this.config.sampleRate, this.window);
@@ -92,6 +98,7 @@ export class FFTEstimator {
     reset(): void {
         this.frameCount = 0;
         this.lastEstimate = null;
+        this._freshEstimate = false;
     }
 
     // ─── Internals ──────────────────────────────────────────────────────
