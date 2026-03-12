@@ -206,7 +206,7 @@ const showResults = (result: BiometricsResult) => {
     }
 
     // ── CPU eye patch ───────────────────────────────────────────────
-    const cpuPatch = result.gaze?.debug?.eyePatch;
+    const cpuPatch = result.gaze?.eyePatch;
     if (cpuPatch && cpuCtx) {
         cpuCanvas.width = cpuPatch.width;
         cpuCanvas.height = cpuPatch.height;

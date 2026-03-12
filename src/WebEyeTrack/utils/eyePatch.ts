@@ -216,6 +216,68 @@ export function cropImageData(
     return output;
 }
 
+export function obtainEyePatchOriginal(
+    frame: ImageData,
+    faceLandmarks: Point[],
+    faceCropSize: number = 512,
+    facePaddingCoefs: [number, number] = [0.4, 0.2],
+    dstImgSize: [number, number] = [512, 128]
+){
+    // Anchor landmarks: eyebrows to chin, nose centre for stability
+    const center = faceLandmarks[4];
+    const leftTop = faceLandmarks[103];
+    const leftBottom = faceLandmarks[150];
+    const rightTop = faceLandmarks[332];
+    const rightBottom = faceLandmarks[379];
+
+    // Apply radial padding around centre
+    let srcPts: Point[] = [leftTop, leftBottom, rightBottom, rightTop];
+    srcPts = srcPts.map(({ x, y }) => ({
+        x: x + (x - center.x) * facePaddingCoefs[0],
+        y: y + (y - center.y) * facePaddingCoefs[1],
+    }));
+
+    const dstPts: Point[] = [
+        { x: 0, y: 0 },
+        { x: 0, y: faceCropSize },
+        { x: faceCropSize, y: faceCropSize },
+        { x: faceCropSize, y: 0 },
+    ];
+
+    const H = computeHomography(srcPts, dstPts);
+    if (!H) {
+        console.warn("[eyePatch] Degenerate homography — returning blank patch");
+        return new ImageData(dstImgSize[0], dstImgSize[1]);
+    }
+    const warped = warpImageData(frame, H, faceCropSize, faceCropSize);
+    if (!warped) {
+        console.warn("[eyePatch] Warp inversion failed — returning blank patch");
+        return new ImageData(dstImgSize[0], dstImgSize[1]);
+    }
+    // Crop eye strip using warped landmark positions
+    const topEyes = applyHomography(H, faceLandmarks[151]);
+    const bottomEyes = applyHomography(H, faceLandmarks[195]);
+
+    const cropY = Math.round(topEyes[1]);
+    let cropHeight = Math.round(bottomEyes[1] - topEyes[1]);
+
+    if (cropHeight <= 0) {
+        console.warn(
+            `[eyePatch] Invalid crop height: ${cropHeight} (warp matrix flip). Defaulting to 1px.`
+        );
+        cropHeight = 1;
+    }
+
+    if (cropY + cropHeight > warped.height) {
+        cropHeight = Math.max(1, warped.height - cropY);
+    }
+
+    const eyeStrip = cropImageData(warped, 0, cropY, warped.width, cropHeight);
+
+    // Resize to CNN input dimensions (512×128)
+    return resizeImageData(eyeStrip, dstImgSize[0], dstImgSize[1]);
+}
+
 // Bilinear interpolation resize — matches OpenCV cv2.resize() INTER_LINEAR.
 export function resizeImageData(
     source: ImageData,
