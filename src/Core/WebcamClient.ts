@@ -101,6 +101,7 @@ export default class WebcamClient {
             if (error instanceof DOMException && (error.name === "NotFoundError" || error.name === "NotReadableError")) {
                 console.warn("Camera not found. Entering waiting mode.");
                 this.notifyStatus('waiting', "Camera disconnected. Waiting for device...");
+                // TODO: how to recover if device reconnects? https://stackoverflow.com/questions/32372178/webrtc-continue-video-stream-when-webcam-is-reconnected
             } else { // Consider other handlers
                 console.error("Critical webcam error:", error);
                 this.notifyStatus('error', `Error: ${error}`);

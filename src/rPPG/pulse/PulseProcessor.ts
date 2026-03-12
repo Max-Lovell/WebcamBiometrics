@@ -18,7 +18,7 @@ export interface PulseProcessorConfig extends PipelineConfig {
     // N frames POS algorithm operates on
     posWindowMultiplier: number; // From the POS paper: l = fps × 1.6 ≈ 32 frames at 20fps.
     // Seconds of POS output to buffer for later analysis - where overlap adding occurs
-    signalWindowSeconds: number;
+    signalWindowSeconds: number; // TODO: this primarily controls the FFT length - the length should really be requested by the FFTEstimator?
     // Max consecutive missing frames before a region is excluded from fusion.
     // Below this threshold, the last valid RGB is held to keep buffers aligned.
     maxConsecutiveMisses: number;
