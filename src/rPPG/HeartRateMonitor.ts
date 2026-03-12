@@ -288,6 +288,7 @@ export class HeartRateMonitor {
         this.smoother.reset();
         this.lastBPM = null;
         this.lastConfidence = 0;
+        this.consecutiveEmpty = 0;
     }
 
     private resolveBPM(estimators: HeartRateResult['estimators']): void {
