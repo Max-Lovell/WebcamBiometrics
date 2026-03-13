@@ -108,6 +108,9 @@ export class PulseProcessor {
     // Process a single camera frame through the full pulse pipeline. Call once per real frame.
     pushFrame(rgbPerRegion: Record<string, { rgb: RGB | null }>, time: number): PulseFrame {
         const ticks = this.buffer.pushFrame(rgbPerRegion, time);
+        if(ticks.length===0){
+            console.warn('NO TICKS RECEIVED')
+        }
         const fusedSamples: FusedSample[] = [];
         let regionPulses: Record<string, number | null> = {};
         let methodPulses: Record<string, number | null> = {};
