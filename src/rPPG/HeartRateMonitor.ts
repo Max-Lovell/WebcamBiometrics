@@ -165,7 +165,12 @@ export class HeartRateMonitor {
         time: number
     ): HeartRateResult {
         // Extract RGB average from each region
-        const roiResult = this.roi.extract(frame, landmarks);
+        const roiResult = this.roi.extract(frame, landmarks); // Note this is always >97% of the time of this function
+        for (const [name, state] of Object.entries(roiResult)) {
+            if(state.rgb === null || (isNaN(state.rgb.r) || isNaN(state.rgb.r) || isNaN(state.rgb.r)) || (state.rgb.r === 0 && state.rgb.g === 0 && state.rgb.b === 0)){
+                console.warn(`${name} region empty: ${JSON.stringify(state.rgb)}`); // NOTE here json stringify masks NaN as null.
+            }
+        }
         // Extract POS signal from each RGB Average.
         // When interpolation is on, pulseFrame.fusedSamples may contain 0..N grid-aligned samples.
         const pulseFrame = this.pulse.pushFrame(roiResult, time);
