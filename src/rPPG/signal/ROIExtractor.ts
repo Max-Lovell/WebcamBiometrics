@@ -250,7 +250,10 @@ export class ROIExtractor {
             }
         }
 
-        if (count === 0) return null;
+        if (count === 0) return null; // Ensure no single key in field is null
+        if (!Number.isFinite(rSum / count)) {
+            console.error('NaN RGB from spans', { rSum, gSum, bSum, count, spanCount: spans.length });
+        }
         return { r: rSum / count, g: gSum / count, b: bSum / count };
     }
 
