@@ -11,7 +11,7 @@ export interface RGBBufferConfig {
     sampleRate: number; // Target sample rate in Hz (defines grid interval when interpolating)
     windowSize: number; // RGB window size in samples (= method's windowSize)
     interpolate: boolean; // Whether to interpolate onto a uniform grid
-    maxConsecutiveMisses: number; // Max consecutive missing frames before excluding a region. Default: 3 // TODO: make optional?
+    maxGapMs: number; // Max gap between frames before re-anchoring the grid (ms). Default: 500
 }
 
 // Chronologically-ordered RGB window for one region, ready for a method
@@ -105,9 +105,6 @@ class RegionState {
     private lastB: number = 0;
     private hasReceived: boolean = false; // Whether we've ever received a valid RGB sample
 
-    // Dropout tracking — consecutive real frames with no RGB data from camera
-    private _consecutiveMisses: number = 0; // Tracks dropped frames to hold last value or exclude
-
     // Per-region interpolation state (only used when interpolation is enabled)
     readonly interpolation: InterpolationState; // 2-frame sliding window of real camera frame RGBs and times
 
@@ -139,39 +136,42 @@ class RegionState {
         this.lastG = g;
         this.lastB = b;
         this.hasReceived = true;
-        this._consecutiveMisses = 0;
     }
 
-    // Push last known RGB value to keep buffers aligned with timestamps if not interpolating
+    // Push last known RGB value to keep buffers aligned with timestamps if not interpolating.
+    // Returns false if we've never received any data (nothing to hold).
     pushHeld(): boolean {
-        if (!this.hasReceived) return false; // nothing to hold
+        if (!this.hasReceived) return false;
         this.pushRGB(this.lastR, this.lastG, this.lastB);
-        this._consecutiveMisses++;
         return true;
     }
 
-    // Record a missed frame for interpolation — push last held frame into buffer
+    // Record a missed frame for interpolation — hold last value into the interpolation buffer.
+    // Returns false if we've never received any data.
     holdForInterpolation(time: number): boolean {
-        if (!this.hasReceived) return false; // Never received data.
+        if (!this.hasReceived) return false;
         this.interpolation.push(this.lastR, this.lastG, this.lastB, time);
-        this._consecutiveMisses++;
         return true;
     }
 
-    // Record current actual frame for later interpolation
+    // Record current actual frame for later interpolation - keeps buffers aligned
+    // TODO: could be handled better potentially, consider downstream effects of NaNs/null
     // Push new RGB into interpolation buffer (not ring buffers — that happens per grid point in pushRGB())
     receiveForInterpolation(r: number, g: number, b: number, time: number): void {
+        // NaN guard juuuust incase
+        if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) {
+            // Treat as missing frame — don't poison interpolation state
+            console.warn('Skipping NaN in the interpolation grid - indicates upstream error in pixel extraction.')
+            this.holdForInterpolation(time);
+            return;
+        }
+
         this.interpolation.push(r, g, b, time);
         // Update last-known values for hold-last-value
         this.lastR = r;
         this.lastG = g;
         this.lastB = b;
         this.hasReceived = true;
-        this._consecutiveMisses = 0;
-    }
-
-    get consecutiveMisses(): number {
-        return this._consecutiveMisses;
     }
 
     get isReady(): boolean {
@@ -198,7 +198,6 @@ class RegionState {
         this.lastG = 0;
         this.lastB = 0;
         this.hasReceived = false;
-        this._consecutiveMisses = 0;
         this.interpolation.reset();
     }
 }
@@ -262,21 +261,15 @@ export class RGBBuffer {
         time: number
     ): BufferTick[] {
         const regionWindows: Record<string, RGBWindow | null> = {};
-        const maxMisses = this.config.maxConsecutiveMisses;
 
         for (const [name, state] of Object.entries(this.regions)) {
             const rgb = rgbPerRegion[name]?.rgb ?? null;
 
             if (rgb) {
                 state.pushHoldRGB(rgb.r, rgb.g, rgb.b);
-            } else if (state.consecutiveMisses < maxMisses) {
-                if (!state.pushHeld()) {
-                    regionWindows[name] = null;
-                    continue; // Never received data — nothing to hold
-                }
-            } else {
+            } else if (!state.pushHeld()) {
                 regionWindows[name] = null;
-                continue; // Sustained dropout — exclude from fusion
+                continue; // Never received data — nothing to hold
             }
 
             regionWindows[name] = state.isReady ? state.unrollToWindow() : null;
@@ -292,22 +285,16 @@ export class RGBBuffer {
         rgbPerRegion: Record<string, { rgb: RGB | null }>,
         time: number
     ): BufferTick[] {
-        const maxMisses = this.config.maxConsecutiveMisses;
-        const maxGapMs = this.config.maxConsecutiveMisses * this.gridIntervalMs;
-        const excludedRegions = new Set<string>();
-
-        // Feed real-frame RGB into each region's InterpolationState
-        // If region has no RGB, hold the last value into the interpolation buffer.
+        // Feed real-frame RGB into each region's InterpolationState.
+        // If a region has no RGB this frame, hold its last value — keeps all regions
+        // aligned on the same interpolation timeline. No per-region exclusion;
+        // gap detection is global (re-anchor below) and the monitor handles full dropout.
         for (const [name, state] of Object.entries(this.regions)) {
-            const rgb = rgbPerRegion[name]?.rgb ?? null;
+            const rgb = rgbPerRegion[name]?.rgb; // Note if this doesn't catch issue, then NaN enters through the lerp function
             if (rgb) {
                 state.receiveForInterpolation(rgb.r, rgb.g, rgb.b, time);
-            } else if (state.consecutiveMisses < maxMisses) {
-                if (!state.holdForInterpolation(time)) {
-                    excludedRegions.add(name); // Never received data
-                }
             } else {
-                excludedRegions.add(name); // Sustained dropout
+                state.holdForInterpolation(time); // no-op if never received
             }
         }
 
@@ -319,7 +306,7 @@ export class RGBBuffer {
         }
 
         // Gap too large — re-anchor the grid instead of backfilling
-        if (time - this.lastFrameTime > maxGapMs) {
+        if (time - this.lastFrameTime > this.config.maxGapMs) {
             for (const state of Object.values(this.regions)) {
                 state.interpolation.reset();
             }
@@ -346,7 +333,7 @@ export class RGBBuffer {
             const regionWindows: Record<string, RGBWindow | null> = {};
 
             for (const [name, state] of Object.entries(this.regions)) {
-                if (excludedRegions.has(name) || !state.interpolation.hasTwoFrames) {
+                if (!state.interpolation.hasTwoFrames) {
                     regionWindows[name] = null;
                     continue;
                 }

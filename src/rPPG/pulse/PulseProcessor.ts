@@ -19,9 +19,9 @@ export interface PulseProcessorConfig extends PipelineConfig {
     posWindowMultiplier: number; // From the POS paper: l = fps × 1.6 ≈ 32 frames at 20fps.
     // Seconds of POS output to buffer for later analysis - where overlap adding occurs
     signalWindowSeconds: number; // TODO: this primarily controls the FFT length - the length should really be requested by the FFTEstimator?
-    // Max consecutive missing frames before a region is excluded from fusion.
-    // Below this threshold, the last valid RGB is held to keep buffers aligned.
-    maxConsecutiveMisses: number;
+    // Max gap between real frames (ms) before re-anchoring the interpolation grid.
+    // Below this, missing regions hold their last value to stay aligned.
+    maxGapMs: number;
     // Whether to interpolate RGB onto a uniform grid before POS processing.
     interpolate: boolean; // Toggle interpolation for bandpass filter and FFT.
 }
@@ -30,7 +30,7 @@ export const DEFAULT_PULSE_CONFIG: PulseProcessorConfig = {
     ...DEFAULT_PIPELINE_CONFIG,
     posWindowMultiplier: 1.6, // From the POS paper: l = fps × 1.6 ≈ 32 frames at 20fps.
     signalWindowSeconds: 10,
-    maxConsecutiveMisses: 3,
+    maxGapMs: 500, // Re-anchor after 500ms gap (10 frames at 20fps)
     interpolate: true,
 };
 
@@ -94,7 +94,7 @@ export class PulseProcessor {
             sampleRate: fps,
             windowSize,
             interpolate: this.config.interpolate,
-            maxConsecutiveMisses: this.config.maxConsecutiveMisses,
+            maxGapMs: this.config.maxGapMs,
         });
 
         this.signalCapacity = Math.ceil(fps * this.config.signalWindowSeconds);
