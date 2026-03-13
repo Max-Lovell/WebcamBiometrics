@@ -86,8 +86,8 @@ class InterpolationState {
 
 // ─── Per-Region State ───────────────────────────────────────────────────────
 // Internal state for a single region's RGB ring buffers.
-// Handles missing frames via hold-last-value with a dropout counter —
-// if a region misses too many consecutive frames, it's excluded from fusion
+// Missing frames use hold-last-value to keep buffers aligned across regions.
+// Gap detection is handled globally by RGBBuffer (re-anchor on large gaps).
 class RegionState {
     // Raw RGB ring buffers that the projection method operates on each frame
     readonly rBuffer: FloatRingBuffer;
@@ -121,7 +121,7 @@ class RegionState {
     }
 
     // Push RGB into ring buffers
-    // Note when interpolating we don't call pushHoldRGB to avoid resetting miss counter
+    // Note when interpolating we don't call pushHoldRGB to avoid updating last-known values
     // as we could interpolate multiple points per actual frame.
     pushRGB(r: number, g: number, b: number): void {
         this.rBuffer.push(r);
@@ -129,7 +129,7 @@ class RegionState {
         this.bBuffer.push(b);
     }
 
-    // Push RGB into ring buffers and reset miss counter — used by the direct (non-interpolated) path.
+    // Push RGB into ring buffers and update last-known values — used by the direct (non-interpolated) path.
     pushHoldRGB(r: number, g: number, b: number): void {
         this.pushRGB(r, g, b);
         this.lastR = r;
@@ -317,6 +317,7 @@ export class RGBBuffer {
 
         // On subsequent frames, compute grid points between this and previous frame
         // then lerp RGB per region, push to ring buffers, and emit ticks.
+        // TODO: need to mark where a frame has been interpolated to so I don't overwrite the same space twice.
 
         // Calc grid-aligned samples between last and current frame (epoch + n * interval)
         // floor+1 gives first grid index strictly after lastFrameTime. Max with 1 skips epoch (no interp data).
@@ -348,7 +349,7 @@ export class RGBBuffer {
 
             ticks.push({ time: gridTime, regionWindows });
         }
-
+        // console.log('N INTERPOLATED FRAMES: ', ticks.length)
         this.lastFrameTime = time;
         return ticks;
     }

@@ -72,7 +72,7 @@ const showResults = (result: BiometricsResult) => {
 
     // ── Heart rate regions + graph ──────────────────────────────────
     if (result.heart) {
-        console.log(result.heart);
+        // console.log(result.heart);
         syncWebcamCanvas();
         const heartRateResult = result.heart;
         if (heartRateResult.signal.raw !== null) {

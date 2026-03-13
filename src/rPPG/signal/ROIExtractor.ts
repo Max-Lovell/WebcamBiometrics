@@ -1,11 +1,7 @@
 /**
  * ROI Extractor - average RGB from regions defined using MediaPipe's FaceLandmarker
  * For each region, returns input polygon in pixels and RGB average for that region.
- *
- * Two extraction strategies:
- *   'scanline' (default) — One frame readback, scanline masks for polygon averaging.
- *                           Uses VideoFrame.copyTo() when available, else single drawImage + getImageData.
- *   'canvas'  (legacy)   — Per-region drawImage with canvas clip. Slower but kept for comparison.
+ * Two extraction strategies: 'scanline' (default), 'canvas' (legacy)
  *
  * TODO: This is fine speed wise, but slowest part of the rPPG at time of writing. Consider TensorFlow or WebGPU version of this.
  */
@@ -116,6 +112,7 @@ export class ROIExtractor {
 
         // console.time('EXTRACTION')
         // Get raw RGBA pixel buffer for the entire frame (one readback)
+        // TODO: only get pixels on bounding box??
         const pixelBuffer = this.getFramePixels(frame, frameWidth, frameHeight);
         if (!pixelBuffer) {
             // Fallback: return null RGB for all regions
@@ -147,8 +144,9 @@ export class ROIExtractor {
 
     // Get raw RGBA pixels from the frame - single drawImage to full-frame canvas + getImageData.
     private getFramePixels(frame: VideoFrameData, width: number, height: number): Uint8ClampedArray | Uint8Array | null {
-        // TODO: consider using VideoFrame.copyTo() as a direct buffer access
-        //  but then need parent functions to be async, adding overheads/ sync complexity - benchmark first. (also 'Format negotiation')
+        // TODO: This is 90% of the pulse extraction method right here.
+        //  consider using VideoFrame.copyTo() as a direct buffer access, although then need parent functions to be async...
+        //  benchmark first. (also 'Format negotiation')
         // Canvas fallback — draw full frame once, read pixels once
         this.initFullFrameCanvas(width, height);
         if (!this.ctx) return null;
@@ -237,6 +235,7 @@ export class ROIExtractor {
         offsetX: number, // 0 if buffer is full frame
         offsetY: number,
     ): RGB | null {
+        // Note could block out of boounds here too, although just clamping the polygons is enough for now.
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
 
         for (const { y, xStart, xEnd } of spans) {
