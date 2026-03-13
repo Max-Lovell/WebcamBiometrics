@@ -1,39 +1,14 @@
 // Pulse signal graph — renders raw + filtered traces with peak markers
-
-class RingBuffer {
-    private buf: Float64Array | Int32Array;
-    private head = 0;
-    count = 0;
-
-    constructor(size: number, int = false) {
-        this.buf = int ? new Int32Array(size) : new Float64Array(size);
-    }
-
-    push(value: number): void {
-        this.buf[this.head] = value;
-        this.head = (this.head + 1) % this.buf.length;
-        if (this.count < this.buf.length) this.count++;
-    }
-
-    // i=0 is oldest, i=count-1 is newest
-    get(i: number): number {
-        const start = (this.head - this.count + this.buf.length) % this.buf.length;
-        return this.buf[(start + i) % this.buf.length];
-    }
-
-    get capacity(): number {
-        return this.buf.length;
-    }
-}
+import {RingBuffer} from "./RingBuffer.ts";
 
 export class PulseGraph {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private maxPoints: number;
 
-    private raw: RingBuffer;
-    private filtered: RingBuffer;
-    private peaks: RingBuffer;
+    private raw: RingBuffer<Float64Array>;
+    private filtered: RingBuffer<Float64Array>;
+    private peaks: RingBuffer<Int32Array>;
     private frameCounter = 0;
 
     constructor(canvas: HTMLCanvasElement, maxPoints = 300) {
@@ -41,14 +16,16 @@ export class PulseGraph {
         this.ctx = canvas.getContext('2d')!;
         this.maxPoints = maxPoints;
 
-        this.raw = new RingBuffer(maxPoints);
-        this.filtered = new RingBuffer(maxPoints);
-        this.peaks = new RingBuffer(64, true);
+        this.raw = new RingBuffer(new Float64Array(maxPoints));
+        this.filtered = new RingBuffer(new Float64Array(maxPoints));
+        this.peaks = new RingBuffer(new Int32Array(64));
     }
 
     update(signal: number, filteredSignal: number | null, peakDetected: boolean): void {
         this.frameCounter++;
-        if (peakDetected) this.peaks.push(this.frameCounter);
+        if (peakDetected) {
+            this.peaks.push(this.frameCounter);
+        }
         this.raw.push(signal);
         this.filtered.push(filteredSignal ?? 0);
         this.draw();
@@ -86,7 +63,7 @@ export class PulseGraph {
     }
 
     private drawTrace(
-        buf: RingBuffer, color: string,
+        buf: RingBuffer<Float64Array>, color: string,
         w: number, h: number, min: number, range: number
     ): void {
         const ctx = this.ctx;
