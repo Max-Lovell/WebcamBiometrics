@@ -405,10 +405,9 @@ export class ROIExtractor {
     // Convert landmark indices (landmarks are [0,1]) to pixel polygon points
     private landmarksToPolygon(indices: number[], landmarks: NormalizedLandmark[], frameWidth: number, frameHeight: number): Point[] {
         if (!landmarks || landmarks.length === 0) return [];
-
-        return indices.map(i => ({
-            x: Math.floor(landmarks[i].x * frameWidth),
-            y: Math.floor(landmarks[i].y * frameHeight),
+        return indices.map(i => ({ // NOTE clamped to frame as landmarks can extend out of frame and pollute the buffers
+            x: Math.max(0, Math.min(frameWidth - 1, Math.floor(landmarks[i].x * frameWidth))),
+            y: Math.max(0, Math.min(frameHeight - 1, Math.floor(landmarks[i].y * frameHeight))),
         }));
     }
 
