@@ -105,6 +105,7 @@ const tracker = new AccuracyTracker();
 const target = document.getElementById('target') as HTMLDivElement;
 
 window.addEventListener('keydown', (e) => {
+    if (e.key === 'b') pulseGraph.beep = !pulseGraph.beep;
     if (e.key !== 't' && e.key !== 'T') return;
     if (tracker.active) {
         const finalStats = tracker.stop();
@@ -115,7 +116,6 @@ window.addEventListener('keydown', (e) => {
         target.style.display = 'block';
     }
 });
-
 // ─── Client setup ───────────────────────────────────────────────────────────
 const client = new BiometricsClient('webcam');
 

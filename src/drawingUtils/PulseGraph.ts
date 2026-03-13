@@ -1,5 +1,6 @@
 // Pulse signal graph — renders raw + filtered traces with peak markers
-import {RingBuffer} from "./RingBuffer.ts";
+
+import { RingBuffer } from './RingBuffer';
 
 export class PulseGraph {
     private canvas: HTMLCanvasElement;
@@ -10,6 +11,10 @@ export class PulseGraph {
     private filtered: RingBuffer<Float64Array>;
     private peaks: RingBuffer<Int32Array>;
     private frameCounter = 0;
+
+    // ─── Beep ───────────────────────────────────────────────────────
+    beep = false;
+    private audioCtx: AudioContext | null = null;
 
     constructor(canvas: HTMLCanvasElement, maxPoints = 300) {
         this.canvas = canvas;
@@ -25,10 +30,35 @@ export class PulseGraph {
         this.frameCounter++;
         if (peakDetected) {
             this.peaks.push(this.frameCounter);
+            if (this.beep) this.playBeep();
         }
         this.raw.push(signal);
         this.filtered.push(filteredSignal ?? 0);
         this.draw();
+    }
+
+    // Short sine pulse — similar to a hospital heart rate monitor
+    private playBeep(): void {
+        if (!this.audioCtx) this.audioCtx = new AudioContext();
+        const ctx = this.audioCtx;
+        const now = ctx.currentTime;
+        const duration = 0.12;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.type = 'sine';
+        osc.frequency.value = 660;
+
+        // Raised-cosine envelope w(t): smooth in, smooth out
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.15, now + duration * 0.3);
+        gain.gain.linearRampToValueAtTime(0.001, now + duration);
+
+        osc.start(now);
+        osc.stop(now + duration);
     }
 
     private draw(): void {
