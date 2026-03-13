@@ -10,7 +10,7 @@ const cursor = document.getElementById('cursor') as HTMLDivElement;
 
 const pulseGraphCanvas = document.getElementById('heartRate') as HTMLCanvasElement;
 const pulseGraph = new PulseGraph(pulseGraphCanvas);
-const bpmDisplay = document.getElementById('BPM') as HTMLCanvasElement;
+const bpmDisplay = document.getElementById('BPM') as HTMLParagraphElement;
 
 const eyePatchCanvas = document.getElementById('eyePatch') as HTMLCanvasElement;
 const eyePatchCtx = eyePatchCanvas.getContext('2d');
