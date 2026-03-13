@@ -63,14 +63,6 @@ body {
     transform: scaleX(-1);
 }
 
-#stats {
-    font-family: monospace;
-    font-size: 13px;
-    color: #0f0;
-    background: #111;
-    padding: 8px;
-    white-space: pre;
-}
 #eyePatch{
 
 }
@@ -93,3 +85,12 @@ body {
     border:1px solid #333;
 }
 
+#stats, #accuracy {
+    font-family: monospace;
+    font-size: 13px;
+    color: #0f0;
+    background: #111;
+    padding: 8px;
+    white-space: pre;
+    margin: 1px;
+}

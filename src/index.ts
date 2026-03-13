@@ -18,6 +18,8 @@ const eyePatchCtx = eyePatchCanvas.getContext('2d');
 const webcamOverlayCanvas = document.getElementById('webcamCanvas') as HTMLCanvasElement;
 const webcamOverlayCtx = webcamOverlayCanvas.getContext('2d')!;
 
+const accuracyText = document.getElementById('accuracy') as HTMLDivElement;
+
 let displayedFFT = '';
 let displayedPeak = '';
 
@@ -61,7 +63,9 @@ const showResults = (result: BiometricsResult) => {
 
     if (normPog && result.gaze?.gazeState === 'open') {
         const stats = tracker.sample(normPog as [number, number]);
-        if (stats) updateOverlay(stats);
+        if (stats) {
+            accuracyText.innerText = `Dist: ${stats.dist.toFixed(4)} | Avg: ${stats.avg.toFixed(4)} | Jitter: ${stats.stddev.toFixed(4)} | Range: ${stats.min.toFixed(4)}-${stats.max.toFixed(4)} | n=${stats.count}`;
+        }
     }
 
     // ── eye patch ───────────────────────────────────────────────
@@ -98,7 +102,6 @@ const showResults = (result: BiometricsResult) => {
 
 // ─── Accuracy tracker ───────────────────────────────────────────────────────
 const tracker = new AccuracyTracker();
-const updateOverlay = AccuracyTracker.createOverlay();
 const target = document.getElementById('target') as HTMLDivElement;
 
 window.addEventListener('keydown', (e) => {
