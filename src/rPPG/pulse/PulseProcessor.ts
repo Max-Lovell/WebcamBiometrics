@@ -109,7 +109,7 @@ export class PulseProcessor {
     pushFrame(rgbPerRegion: Record<string, { rgb: RGB | null }>, time: number): PulseFrame {
         const ticks = this.buffer.pushFrame(rgbPerRegion, time);
         if(ticks.length===0){
-            console.warn('NO TICKS RECEIVED')
+            console.warn('Interpolator produced 0 frames')
         }
         const fusedSamples: FusedSample[] = [];
         let regionPulses: Record<string, number | null> = {};
