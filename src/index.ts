@@ -7,6 +7,7 @@ import { TraceDisplay } from './drawingUtils/TraceDisplay';
 
 // ─── Pulse Graph ────────────────────────────────────────────────────────────
 const cursor = document.getElementById('cursor') as HTMLDivElement;
+const video = document.getElementById('webcam') as HTMLVideoElement;
 
 const pulseGraphCanvas = document.getElementById('heartRate') as HTMLCanvasElement;
 const pulseGraph = new PulseGraph(pulseGraphCanvas);
@@ -33,16 +34,15 @@ let lastOutputW = 0;
 let lastOutputH = 0;
 
 function syncWebcamCanvas(): void {
-    const cw = webcamOverlayCanvas.clientWidth;
-    const ch = webcamOverlayCanvas.clientHeight;
-    if (lastOutputW !== cw || lastOutputH !== ch) {
-        webcamOverlayCanvas.width = cw;
-        webcamOverlayCanvas.height = ch;
-        lastOutputW = cw;
-        lastOutputH = ch;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (lastOutputW !== vw || lastOutputH !== vh) {
+        webcamOverlayCanvas.width = vw;
+        webcamOverlayCanvas.height = vh;
+        lastOutputW = vw;
+        lastOutputH = vh;
     }
 }
-
 // ─── Results callback ───────────────────────────────────────────────────────
 const showResults = (result: BiometricsResult) => {
     if (!result.face?.detected) return;
