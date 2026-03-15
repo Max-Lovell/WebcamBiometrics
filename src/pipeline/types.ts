@@ -37,8 +37,10 @@ export interface BiometricsResult {
     face?: FaceContext;
     gaze?: WebEyeTrackResult;
     heart?: HeartRateResult;
+    misc?: Record<string, any>;
     // debug?: {}; // For anything else.
     errors?: Record<string, string>;
+
 }
 
 export interface Blackboard extends BiometricsResult {

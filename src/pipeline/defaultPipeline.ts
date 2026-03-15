@@ -11,11 +11,13 @@ import { Pipeline } from './Pipeline.ts';
 import { FaceLandmarkerStage } from './stages/FaceLandmarkerStage';
 import { GazeStage } from './stages/GazeStage';
 import { HeartRateStage } from './stages/HeartRateStage';
+import { MiscStage } from './stages/MiscStage';
 
 export interface DefaultPipelineConfig {
     face?: boolean; // | FaceStageConfig; //modelPathBasePath?: string; // e.g., '/public/models/'
     gaze?: boolean;// | GazeStageConfig;
     heart?: boolean;// | HeartRateStageConfig;
+    misc?: boolean;
 }
 
 // Creates a pre-configured BiometricsPipeline with the requested stages.
@@ -26,6 +28,7 @@ export async function createDefaultPipeline(config: DefaultPipelineConfig = {}):
     // Default to true if not explicitly disabled
     const useGaze = config.gaze !== false;
     const useHeartRate = config.heart !== false;
+    const useMisc = config.misc !== false; // or `=== true` for opt-in
 
     // const stages = [face, gaze, heart].filter(s => s.initialize);
     // await Promise.all(stages.map(s => s.initialize!()));
@@ -45,6 +48,10 @@ export async function createDefaultPipeline(config: DefaultPipelineConfig = {}):
 
     if (useHeartRate) {
         pipeline.addStage(new HeartRateStage());
+    }
+
+    if (useMisc) {
+        pipeline.addStage(new MiscStage()); // No initPromises needed unless loading a model
     }
 
     // Run init in parallel

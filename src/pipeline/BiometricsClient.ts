@@ -29,6 +29,7 @@ export interface BiometricsClientConfig {
         // TODO: add facelandmarker config
         gaze?: TrackerConfig | false;
         heart?: HeartRateMonitorConfig | false;
+        misc?: boolean;
     };
 }
 
