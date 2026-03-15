@@ -5,6 +5,19 @@
 
 import type { VideoFrameData } from "../../types.ts";
 
+// Frame width, handling both VideoFrame (displayWidth) and other CanvasImageSource types (width).
+export function getFrameWidth(frame: VideoFrameData): number {
+    if ('displayWidth' in frame) return frame.displayWidth;   // VideoFrame
+    if ('videoWidth' in frame) return frame.videoWidth;        // HTMLVideoElement
+    return frame.width;                                        // ImageData, ImageBitmap
+}
+
+export function getFrameHeight(frame: VideoFrameData): number {
+    if ('displayHeight' in frame) return frame.displayHeight;   // VideoFrame
+    if ('videoHeight' in frame) return frame.videoHeight;        // HTMLVideoElement
+    return frame.height;                                        // ImageData, ImageBitmap
+}
+
 // Manages an OffscreenCanvas/HTMLCanvasElement for converting video frames to ImageData.
 // Reuses the canvas across calls to avoid repeated allocation.
 export class FrameConverter {
