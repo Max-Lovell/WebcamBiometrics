@@ -6,33 +6,50 @@
 import type { VideoFrameData } from "../../types.ts";
 
 // Manages an OffscreenCanvas/HTMLCanvasElement for converting video frames to ImageData.
-//Reuses the canvas across calls to avoid repeated allocation.
+// Reuses the canvas across calls to avoid repeated allocation.
 export class FrameConverter {
     private canvas: OffscreenCanvas | HTMLCanvasElement | null = null;
     private ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null = null;
+
     // Converts any supported frame type into ImageData for CPU-based processing. Also returns the frame dimensions.
     convert(frame: VideoFrameData): { imageData: ImageData; width: number; height: number } {
         if (frame instanceof ImageData) {
             return { imageData: frame, width: frame.width, height: frame.height };
         }
 
-        let width: number;
-        let height: number;
-
-        if (frame instanceof VideoFrame) {
-            width = frame.displayWidth;
-            height = frame.displayHeight;
-        } else {
-            // ImageBitmap or HTMLVideoElement
-            width = frame.width;
-            height = frame.height;
-        }
-
-        const ctx = this.getContext(width, height);
-        ctx.drawImage(frame as CanvasImageSource, 0, 0);
+        const { width, height } = this.getFrameDimensions(frame);
+        const ctx = this.drawToCanvas(frame, width, height);
         const imageData = ctx.getImageData(0, 0, width, height);
 
         return { imageData, width, height };
+    }
+
+    getCanvas(frame: VideoFrameData): OffscreenCanvas | HTMLCanvasElement | ImageData {
+        if (frame instanceof ImageData) {
+            return frame; // fromPixels handles ImageData directly
+        }
+
+        const { width, height } = this.getFrameDimensions(frame);
+        this.drawToCanvas(frame, width, height);
+        return this.canvas!;
+    }
+
+     getFrameDimensions(frame: Exclude<VideoFrameData, ImageData>): { width: number; height: number } {
+        if (frame instanceof VideoFrame) {
+            return { width: frame.displayWidth, height: frame.displayHeight };
+        }
+        // ImageBitmap or HTMLVideoElement
+        return { width: frame.width, height: frame.height };
+    }
+
+    private drawToCanvas(
+        frame: Exclude<VideoFrameData, ImageData>,
+        width: number,
+        height: number,
+    ): OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D {
+        const ctx = this.getContext(width, height);
+        ctx.drawImage(frame as CanvasImageSource, 0, 0);
+        return ctx;
     }
 
     private getContext(width: number, height: number) {
@@ -57,26 +74,5 @@ export class FrameConverter {
         }
 
         return this.ctx;
-    }
-
-    getCanvas(frame: VideoFrameData): OffscreenCanvas | HTMLCanvasElement | ImageData {
-        if (frame instanceof ImageData) {
-            return frame; // fromPixels handles ImageData directly
-        }
-
-        let width: number;
-        let height: number;
-
-        if (frame instanceof VideoFrame) {
-            width = frame.displayWidth;
-            height = frame.displayHeight;
-        } else {
-            width = frame.width;
-            height = frame.height;
-        }
-
-        const ctx = this.getContext(width, height);
-        ctx.drawImage(frame as CanvasImageSource, 0, 0);
-        return this.canvas!;
     }
 }
