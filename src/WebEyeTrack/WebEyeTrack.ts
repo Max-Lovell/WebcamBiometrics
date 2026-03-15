@@ -24,7 +24,7 @@ import type {
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import type { VideoFrameData } from "../types.ts";
-import { FrameConverter } from "./utils/frameUtils.ts";
+import { FrameConverter } from "../utils/frameUtils.ts";
 
 // ============================================================================
 // Support Tensor Types
