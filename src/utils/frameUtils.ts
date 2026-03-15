@@ -18,6 +18,12 @@ export function getFrameHeight(frame: VideoFrameData): number {
     return frame.height;                                        // ImageData, ImageBitmap
 }
 
+export function getFrameDimensions(frame: VideoFrameData): {width: number, height: number} {
+    return {
+        width: getFrameWidth(frame),
+        height: getFrameHeight(frame)
+    }
+}
 // Manages an OffscreenCanvas/HTMLCanvasElement for converting video frames to ImageData.
 // Reuses the canvas across calls to avoid repeated allocation.
 export class FrameConverter {
