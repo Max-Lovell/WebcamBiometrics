@@ -7,8 +7,8 @@
  */
 
 import type { FaceLandmarkerResult, NormalizedLandmark } from '@mediapipe/tasks-vision';
-import type { VideoFrameData, Point } from "../../types.ts";
-import type { RGB } from "../types.ts";
+import type { VideoFrameData, Point } from "../../types";
+import type { RGB } from "../types";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 // ROIS: keyed by region name, with arrays of MediaPipe Face Landmark indices defining region boundary

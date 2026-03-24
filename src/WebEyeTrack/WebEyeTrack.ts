@@ -1,15 +1,15 @@
 import * as tf from "@tensorflow/tfjs";
 import { Matrix } from "ml-matrix";
 
-import type { WebEyeTrackResult } from "./types.ts";
-import type { Point } from "../types.ts";
-import BlazeGaze from "./BlazeGaze.ts";
-import { computeEAR } from "./utils/blink.ts";
-import { obtainEyePatchOriginal} from "./utils/eyePatch.ts";
+import type { WebEyeTrackResult } from "./types";
+import type { Point } from "../types";
+import BlazeGaze from "./BlazeGaze";
+import { computeEAR } from "./utils/blink";
+import { obtainEyePatchOriginal} from "./utils/eyePatch";
 import {
   computeAffineMatrixML,
   applyAffineMatrix,
-} from "./utils/affineTransformation.ts";
+} from "./utils/affineTransformation";
 import {
   computeMetricFaceOrigin,
   createIntrinsicsMatrix,
@@ -17,14 +17,14 @@ import {
   estimateFaceWidth,
   translateMatrix,
   getHeadVector,
-} from "./utils/faceOrigin.ts";
-import { KalmanFilter2D } from "./utils/filter.ts";
+} from "./utils/faceOrigin";
+import { KalmanFilter2D } from "./utils/filter";
 import type {
   FaceLandmarkerResult,
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
-import type { VideoFrameData } from "../types.ts";
-import { FrameConverter } from "../utils/frameUtils.ts";
+import type { VideoFrameData } from "../types";
+import { FrameConverter } from "../utils/frameUtils";
 
 // ============================================================================
 // Support Tensor Types

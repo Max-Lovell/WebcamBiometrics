@@ -1,5 +1,5 @@
-import WebEyeTrack from './WebEyeTrack.ts'
-import BlazeGaze from "./BlazeGaze.ts"
+import WebEyeTrack from './WebEyeTrack'
+import BlazeGaze from "./BlazeGaze"
 
 export {
     WebEyeTrack,

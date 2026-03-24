@@ -2,7 +2,7 @@
 // Eye Patch Extraction and Homography
 // ============================================================================
 
-import type { Point } from "../../types.ts";
+import type { Point } from "../../types";
 import * as tf from "@tensorflow/tfjs";
 // ── Homography (Gaussian elimination, flat output) ──────────────────────────
 // Homography solved via Gaussian elimination (8-param DLT, H[8]=1).

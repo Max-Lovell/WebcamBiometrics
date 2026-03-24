@@ -5,8 +5,8 @@
  * by using the blood volume pulse signature", Physiological Measurement, 2014
  */
 
-import type { WindowedPulseMethod, RGBSignal } from './types.ts';
-import { mean } from '../../utils/math.ts';
+import type { WindowedPulseMethod, RGBSignal } from './types';
+import { mean } from '../../utils/math';
 
 // Default PBV signature — empirically derived relative pulsatile amplitudes.
 // These values are from the original paper's skin optics model.

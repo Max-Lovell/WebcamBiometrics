@@ -18,26 +18,26 @@
 
 import type { FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 
-import { ROIExtractor } from './signal/ROIExtractor.ts';
-import type { LandmarkerROIs } from './signal/ROIExtractor.ts';
-import type { VideoFrameData, Point } from "../types.ts";
+import { ROIExtractor } from './signal/ROIExtractor';
+import type { LandmarkerROIs } from './signal/ROIExtractor';
+import type { VideoFrameData, Point } from "../types";
 
-import {PulseProcessor, type PulseProcessorConfig} from './pulse/PulseProcessor.ts';
+import {PulseProcessor, type PulseProcessorConfig} from './pulse/PulseProcessor';
 
 import {PeakEstimator, type PeakEstimatorConfig} from './signal/PeakEstimator';
 import type { PeakResult } from './signal/PeakEstimator';
 
-import {FFTEstimator, type FFTEstimatorConfig} from './signal/FFT/FFTEstimator.ts';
-import type { FFTEstimate } from './signal/FFT/FFTEstimator.ts';
+import {FFTEstimator, type FFTEstimatorConfig} from './signal/FFT/FFTEstimator';
+import type { FFTEstimate } from './signal/FFT/FFTEstimator';
 
 import type { PipelineConfig, RGB } from './types';
 import { DEFAULT_PIPELINE_CONFIG } from './types';
-import { BandpassFilter } from "./signal/BandpassFilter.ts";
+import { BandpassFilter } from "./signal/BandpassFilter";
 
 import type { WindowedPulseMethod } from './pulse/projection/types';
 import { createMethod } from './pulse/registry';
 
-// import {CHROM} from "./pulse/projection/CHROM.ts";
+// import {CHROM} from "./pulse/projection/CHROM";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export interface HeartRateMonitorConfig {

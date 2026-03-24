@@ -1,8 +1,8 @@
 import type {FaceContext, FrameMetadata} from '../pipeline/types';
 import type { MiscResult } from './types';
-import {irisDistance} from "./utils/distance.ts";
-import {getFrameDimensions} from "../utils/frameUtils.ts";
-import type {VideoFrameData} from "../types.ts";
+import {irisDistance} from "./utils/distance";
+import {getFrameDimensions} from "../utils/frameUtils";
+import type {VideoFrameData} from "../types";
 
 export class MiscProcessor {
     process(frame: VideoFrameData, frameMetadata: FrameMetadata, face: FaceContext): MiscResult {

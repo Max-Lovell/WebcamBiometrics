@@ -4,7 +4,7 @@
 import type {FaceLandmarkerResult} from '@mediapipe/tasks-vision';
 import type {HeartRateResult} from '../rPPG';
 import type {WebEyeTrackResult} from "../WebEyeTrack/types";
-import type {VideoFrameData} from "../types.ts";
+import type {VideoFrameData} from "../types";
 
 // Face landmarks + derived head pose, Written by FaceLandmarkerStage; read by GazeStage, HeartRateStage, etc. TODO: could put in /Core
 export interface FaceContext { // TODO: consider trimming some of this output down for DX and using full FaceLandmarkerResult in the code only

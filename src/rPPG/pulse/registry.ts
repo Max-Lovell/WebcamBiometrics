@@ -27,10 +27,10 @@
 
 import type { WindowedPulseMethod } from './projection/types';
 import { POS } from './projection/POS';
-import { CHROM } from './projection/CHROM.ts';
-import { Green } from './projection/Green.ts';
-import { GRGB } from './projection/GRGB.ts';
-import { PBV } from './projection/PBV.ts';
+import { CHROM } from './projection/CHROM';
+import { Green } from './projection/Green';
+import { GRGB } from './projection/GRGB';
+import { PBV } from './projection/PBV';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

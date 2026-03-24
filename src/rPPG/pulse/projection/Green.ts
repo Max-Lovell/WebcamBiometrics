@@ -8,8 +8,8 @@
  * ambient light", Optics Express, 2008
  */
 
-import type { WindowedPulseMethod, RGBSignal } from './types.ts';
-import { mean } from '../../utils/math.ts';
+import type { WindowedPulseMethod, RGBSignal } from './types';
+import { mean } from '../../utils/math';
 
 export class Green implements WindowedPulseMethod {
     readonly name = 'Green';

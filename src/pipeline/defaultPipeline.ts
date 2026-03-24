@@ -7,7 +7,7 @@
  */
 
 // TODO: what config is needed generally? Probably want options to config everything...
-import { Pipeline } from './Pipeline.ts';
+import { Pipeline } from './Pipeline';
 import { FaceLandmarkerStage } from './stages/FaceLandmarkerStage';
 import { GazeStage } from './stages/GazeStage';
 import { HeartRateStage } from './stages/HeartRateStage';

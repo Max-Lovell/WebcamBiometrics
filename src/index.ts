@@ -1,6 +1,6 @@
-import type {BiometricsResult} from "./pipeline/types.ts";
+import type {BiometricsResult} from "./pipeline/types";
 import { BiometricsClient } from './pipeline/BiometricsClient';
-import { drawPulseMask } from "./drawingUtils/drawPulseMask.ts";
+import { drawPulseMask } from "./drawingUtils/drawPulseMask";
 import { PulseGraph } from './drawingUtils/PulseGraph';
 import { AccuracyTracker } from './drawingUtils/AccuracyTracker';
 import { TraceDisplay } from './drawingUtils/TraceDisplay';

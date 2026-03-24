@@ -1,5 +1,5 @@
-import type {VideoFrameData} from "../types.ts";
-import type {FrameMetadata} from "../pipeline/types.ts"; // Note move these up?
+import type {VideoFrameData} from "../types";
+import type {FrameMetadata} from "../pipeline/types"; // Note move these up?
 
 export type WebcamStatus = 'active' | 'inactive' | 'waiting' | 'error';
 

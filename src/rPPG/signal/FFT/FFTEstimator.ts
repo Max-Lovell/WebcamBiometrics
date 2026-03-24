@@ -3,10 +3,10 @@
  * Batch FFT spectral analysis for heart rate estimation - calls FFT.ts
  */
 
-import { computeSpectrum, findDominantFrequency, hanningWindow } from './FFT.ts';
-import { BandpassFilter } from '../BandpassFilter.ts';
-import type { PipelineConfig } from '../../types.ts';
-import { DEFAULT_PIPELINE_CONFIG } from '../../types.ts';
+import { computeSpectrum, findDominantFrequency, hanningWindow } from './FFT';
+import { BandpassFilter } from '../BandpassFilter';
+import type { PipelineConfig } from '../../types';
+import { DEFAULT_PIPELINE_CONFIG } from '../../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

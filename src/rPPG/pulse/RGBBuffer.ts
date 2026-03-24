@@ -3,8 +3,8 @@
  * // TODO: maybe separate out the interpolator from here.
  */
 
-import { FloatRingBuffer } from '../FloatRingBuffer.ts';
-import type { RGB } from '../types.ts';
+import { FloatRingBuffer } from '../FloatRingBuffer';
+import type { RGB } from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export interface RGBBufferConfig {

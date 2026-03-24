@@ -5,8 +5,8 @@
  * https://www.w3.org/2011/audio/audio-eq-cookbook.html
  */
 
-import { bpmToHz } from '../utils/math.ts';
-import {type PipelineConfig, DEFAULT_PIPELINE_CONFIG } from '../types.ts';
+import { bpmToHz } from '../utils/math';
+import {type PipelineConfig, DEFAULT_PIPELINE_CONFIG } from '../types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

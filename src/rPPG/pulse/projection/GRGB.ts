@@ -5,8 +5,8 @@
  * (discussed as a baseline comparison method)
  */
 
-import type { WindowedPulseMethod, RGBSignal } from './types.ts';
-import { mean } from '../../utils/math.ts';
+import type { WindowedPulseMethod, RGBSignal } from './types';
+import { mean } from '../../utils/math';
 
 export class GRGB implements WindowedPulseMethod {
     readonly name = 'GRGB';

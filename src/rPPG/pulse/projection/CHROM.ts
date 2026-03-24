@@ -4,8 +4,8 @@
  * IEEE Transactions on Biomedical Engineering, 2013
  */
 
-import type { WindowedPulseMethod, RGBSignal} from './types.ts';
-import { mean, std } from '../../utils/math.ts';
+import type { WindowedPulseMethod, RGBSignal} from './types';
+import { mean, std } from '../../utils/math';
 
 export class CHROM implements WindowedPulseMethod {
     readonly name = 'CHROM';

@@ -6,10 +6,10 @@
  * Estimation-agnostic — downstream consumers decide how to analyse the signal.
  */
 
-import { RGBBuffer } from './RGBBuffer.ts';
-import type { WindowedPulseMethod } from './projection/types.ts';
-import {POS} from './projection/POS.ts';
-import {DEFAULT_PIPELINE_CONFIG, type RGB, type PipelineConfig} from '../types.ts';
+import { RGBBuffer } from './RGBBuffer';
+import type { WindowedPulseMethod } from './projection/types';
+import {POS} from './projection/POS';
+import {DEFAULT_PIPELINE_CONFIG, type RGB, type PipelineConfig} from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

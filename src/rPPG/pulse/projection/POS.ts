@@ -6,8 +6,8 @@
  * See 'Algorithm 1' in: https://pure.tue.nl/ws/files/31563684/TBME_00467_2016_R1_preprint.pdf
  */
 
-import type { WindowedPulseMethod, RGBSignal } from './types.ts';
-import { mean, std } from '../../utils/math.ts';
+import type { WindowedPulseMethod, RGBSignal } from './types';
+import { mean, std } from '../../utils/math';
 
 export class POS implements WindowedPulseMethod {
     readonly name = 'POS';

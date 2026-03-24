@@ -21,9 +21,9 @@
  *  TODO: difficult to distinguish systolic from diastolic peak, or find dictrotic notch - is there research on peak detection for PPG?
  */
 
-import { median } from '../utils/math.ts';
-import type { PipelineConfig } from '../types.ts';
-import { DEFAULT_PIPELINE_CONFIG } from '../types.ts';
+import { median } from '../utils/math';
+import type { PipelineConfig } from '../types';
+import { DEFAULT_PIPELINE_CONFIG } from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

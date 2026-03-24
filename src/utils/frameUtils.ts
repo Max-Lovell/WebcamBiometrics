@@ -3,7 +3,7 @@
 // into ImageData for CPU-based processing in the gaze pipeline.
 // TODO: consider merging with similar stuff in rPPG package, maybe move up chain to pipeline?
 
-import type { VideoFrameData } from "../types.ts";
+import type { VideoFrameData } from "../types";
 
 // Frame width, handling both VideoFrame (displayWidth) and other CanvasImageSource types (width).
 export function getFrameWidth(frame: VideoFrameData): number {

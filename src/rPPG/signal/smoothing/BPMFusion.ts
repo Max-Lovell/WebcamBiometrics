@@ -12,7 +12,7 @@
  */
 
 import type { PeakResult } from '../PeakEstimator';
-import type { FFTEstimate } from '../FFT/FFTEstimator.ts';
+import type { FFTEstimate } from '../FFT/FFTEstimator';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

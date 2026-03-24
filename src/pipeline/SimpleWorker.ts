@@ -5,7 +5,7 @@
 import FaceLandmarkerClient from '../Core/FaceLandmarkerClient';
 import WebEyeTrack from '../WebEyeTrack/WebEyeTrack';
 import { HeartRateMonitor } from '../rPPG';
-import type { BiometricsResult } from './types.ts';
+import type { BiometricsResult } from './types';
 
 let face: FaceLandmarkerClient;
 let gaze: WebEyeTrack;

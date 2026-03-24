@@ -6,8 +6,8 @@
  * A generic message router - doesn't know what stages exist or what they do.
  */
 
-import { Pipeline } from './Pipeline.ts';
-import type {BiometricsResult} from "./types.ts";
+import { Pipeline } from './Pipeline';
+import type { BiometricsResult } from './types';
 
 let pipeline: Pipeline;
 let status: 'initializing' | 'idle' | 'inference' = 'initializing';

@@ -3,9 +3,9 @@
  * generates magnitude spectrum from detrended zero-padded Hanning window
  */
 
-import { bpmToHz, hzToBpm } from '../../utils/math.ts';
-import {DEFAULT_PIPELINE_CONFIG} from "../../types.ts";
-import type {FFTEstimatorConfig} from "./FFTEstimator.ts";
+import { bpmToHz, hzToBpm } from '../../utils/math';
+import {DEFAULT_PIPELINE_CONFIG} from "../../types";
+import type {FFTEstimatorConfig} from "./FFTEstimator";
 
 // ─── Windowing ───────────────────────────────────────────────────────────────
 // Generate a Hanning window of length N - computed once and cached

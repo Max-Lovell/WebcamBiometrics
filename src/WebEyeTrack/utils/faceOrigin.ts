@@ -3,7 +3,7 @@
 // ============================================================================
 import { Matrix, inverse} from 'ml-matrix'; // TODO: this in faceReconstruction and computeFaceOrigin3D probably should use preallocated mats
 import type {Matrix as MediaPipeMatrix} from '@mediapipe/tasks-vision';
-import type {Point} from '../../types.ts';
+import type {Point} from '../../types';
 
 // Depth radial parameters
 const MAX_STEP_CM = 5;

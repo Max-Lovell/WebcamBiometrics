@@ -27,37 +27,37 @@ export type {
 
 // ─── Tier 1: ROI Extraction ─────────────────────────────────────────────────
 
-export { ROIExtractor, FACE_ROIS } from './signal/ROIExtractor.ts';
+export { ROIExtractor, FACE_ROIS } from './signal/ROIExtractor';
 export type {
     RegionResult,
     LandmarkerROIs,
-} from './signal/ROIExtractor.ts';
+} from './signal/ROIExtractor';
 
 // ─── Tier 2: Pulse Signal Processing ────────────────────────────────────────
 
-export { PulseProcessor } from './pulse/PulseProcessor.ts';
+export { PulseProcessor } from './pulse/PulseProcessor';
 export type {
     PulseProcessorConfig,
     PulseFrame,
-} from './pulse/PulseProcessor.ts';
+} from './pulse/PulseProcessor';
 
 // ─── Tier 3: Heart Rate Estimation ──────────────────────────────────────────
-export { FFTEstimator } from './signal/FFT/FFTEstimator.ts';
+export { FFTEstimator } from './signal/FFT/FFTEstimator';
 export type {
     FFTEstimatorConfig,
     FFTEstimate,
-} from './signal/FFT/FFTEstimator.ts';
+} from './signal/FFT/FFTEstimator';
 
 // ─── Signal Processing Primitives (advanced users) ──────────────────────────
 
 export { BandpassFilter, BiquadFilter } from './signal/BandpassFilter';
-export { fft, computeSpectrum, findDominantFrequency, hanningWindow } from './signal/FFT/FFT.ts';
-export type { SpectrumResult, DominantFrequencyResult } from './signal/FFT/FFT.ts';
+export { fft, computeSpectrum, findDominantFrequency, hanningWindow } from './signal/FFT/FFT';
+export type { SpectrumResult, DominantFrequencyResult } from './signal/FFT/FFT';
 
 // ─── Smoothing ──────────────────────────────────────────────────────────────
 
-export { MedianSmoother, EMASmoother, CombinedSmoother } from './signal/smoothing/TemporalSmoothing.ts';
-export type { BPMSmoother } from './signal/smoothing/TemporalSmoothing.ts';
+export { MedianSmoother, EMASmoother, CombinedSmoother } from './signal/smoothing/TemporalSmoothing';
+export type { BPMSmoother } from './signal/smoothing/TemporalSmoothing';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 

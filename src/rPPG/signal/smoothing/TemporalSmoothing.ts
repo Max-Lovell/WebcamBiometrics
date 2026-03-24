@@ -3,7 +3,7 @@
  * Stabilises BPM estimates over time by filtering out transient outliers.
  */
 
-import { median } from '../../utils/math.ts';
+import { median } from '../../utils/math';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export type SmoothingStrategy = 'median' | 'ema' | 'combined' | 'none';
