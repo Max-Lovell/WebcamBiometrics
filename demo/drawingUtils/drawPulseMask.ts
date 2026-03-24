@@ -1,4 +1,4 @@
-import type {RegionDetail} from "../rPPG";
+import type {RegionDetail} from "../../src/rPPG";
 
 export function drawPulseMask(
     regions: Record<string, RegionDetail>,
