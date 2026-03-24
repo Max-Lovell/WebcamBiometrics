@@ -1,7 +1,7 @@
 import type {FaceLandmarkerResult} from "@mediapipe/tasks-vision";
 import {FaceLandmarker, FilesetResolver} from "@mediapipe/tasks-vision";
 
-import type {VideoFrameData} from "../types.ts";
+import type { VideoFrameData } from "../types";
 
 // References
 // https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/web_js#video
