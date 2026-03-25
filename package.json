@@ -1,29 +1,73 @@
 {
   "name": "webcam-biometrics",
-  "private": true,
-  "version": "1.0.0",
-  "main": "./src/index.ts",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
+  "version": "0.1.0",
+  "description": "Real-time webcam biometrics: face landmarks, gaze tracking, and heart rate estimation",
+  "author": "Max <mel29@sussex.ac.uk>",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/webcam-biometrics.cjs",
+  "module": "./dist/webcam-biometrics.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/webcam-biometrics.js"
+      },
+      "require": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/webcam-biometrics.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "models",
+    "README.md",
+    "LICENSE"
   ],
+  "keywords": [
+    "webcam",
+    "biometrics",
+    "gaze-tracking",
+    "eye-tracking",
+    "heart-rate",
+    "rppg",
+    "mediapipe",
+    "face-landmarks",
+    "jspsych",
+    "psychopy"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/max-lovell/webcam-biometrics"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build"
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "build:demo": "vite build --mode demo",
+    "build:check": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "test": "jest",
+    "postpublish": "curl -sf https://cdn.jsdelivr.net/npm/webcam-biometrics@$npm_package_version/models/blazegaze/model.json > /dev/null && echo 'jsDelivr cache warmed' || echo 'Cache warm failed (non-critical)'"
+  },
+  "peerDependencies": {
+    "@mediapipe/tasks-vision": "^0.10.32",
+    "@tensorflow/tfjs": "^4.22.0"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^0.10.32",
-    "@tensorflow/tfjs": "^4.22.0",
     "mathjs": "^15.1.0",
     "ml-matrix": "^6.12.1"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "vite": "^5.0.0",
+    "@mediapipe/tasks-vision": "^0.10.32",
+    "@tensorflow/tfjs": "^4.22.0",
     "@types/jest": "^30.0.0",
+    "@types/node": "^25.0.10",
+    "canvas": "^3.2.1",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.6",
-    "canvas": "^3.2.1",
-    "@types/node": "^25.0.10"
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
   }
 }
