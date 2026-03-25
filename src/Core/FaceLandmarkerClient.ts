@@ -11,8 +11,9 @@ export default class FaceLandmarkerClient {
   constructor() {
   }
 
-  async initialize() {
-    const filesetResolver = await FilesetResolver.forVisionTasks("/wasm");
+  async initialize(wasmPath: string, modelPath: string): Promise<FaceLandmarker|undefined> {
+    // Note not done in constructor as they can't be async. Consider static factory pattern here.
+    const filesetResolver = await FilesetResolver.forVisionTasks(wasmPath);
     try {
       // Facelandmarker is broken for vite (self.import() error) so below is a hack to get it working
       // Noted here: https://github.com/google-ai-edge/mediapipe/issues/5257
@@ -29,7 +30,7 @@ export default class FaceLandmarkerClient {
 
       return this.faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
-          modelAssetPath: `/wasm/face_landmarker.task`, //https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+          modelAssetPath: modelPath,
           delegate: "GPU",
         },
         // TODO: Make some of these optional and pass through config from constructor

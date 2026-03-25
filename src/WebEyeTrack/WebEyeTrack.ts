@@ -155,7 +155,7 @@ export default class WebEyeTrack {
   // Lifecycle
   // ==========================================================================
 
-  async initialize(modelPath?: string): Promise<void> {
+  async initialize(modelPath: string): Promise<void> {
     await this.blazeGaze.loadModel(modelPath);
     // await this.warmup();
     this.loaded = true;

@@ -11,15 +11,12 @@ export default class BlazeGaze {
     constructor() {
     }
 
-    async loadModel(modelPath?: string): Promise<void> {
-        // CDN path if needed: 'https://cdn.jsdelivr.net/gh/RedForestAI/WebEyeTrack@main/js/examples/demo-app/public/web/model.json';
-        const path = modelPath || `${self.location.origin}/public/models/model.json`;
+    async loadModel(modelPath: string): Promise<void> {
         try {
-            // Load model from local directory (adjust path if needed)
-            this.model = await tf.loadLayersModel(path);
+            this.model = await tf.loadLayersModel(modelPath);
             console.log('✅ BlazeGaze model loaded successfully');
         } catch (error) {
-            console.error('❌ Error loading BlazeGaze model from path:', path);
+            console.error('❌ Error loading BlazeGaze model from path:', modelPath);
             console.error(error);
             throw error;
         }

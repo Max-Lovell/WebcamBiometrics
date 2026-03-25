@@ -12,6 +12,8 @@ import type { WebcamStatus } from '../Core/WebcamClient';
 import type { BiometricsResult, FrameMetadata } from './types';
 import type { VideoFrameData } from '../types';
 import type { HeartRateMonitorConfig } from "../rPPG";
+import { resolveAssets } from './assetDefaults';
+import type { AssetConfig } from './assetDefaults';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 export interface TrackerConfig {
@@ -31,6 +33,7 @@ export interface BiometricsClientConfig {
         heart?: HeartRateMonitorConfig | false;
         misc?: boolean;
     };
+    assets?: AssetConfig; // Optional override URLs for model and WASM assets - CDN defaults
 }
 
 // ─── Client ─────────────────────────────────────────────────────────────────
@@ -85,11 +88,16 @@ export class BiometricsClient {
         this.messageHandler = (e: MessageEvent) => this.handleWorkerMessage(e); // For receiving messages back
         this.worker.onmessage = this.messageHandler;
 
+        // Resolve assets: merge user overrides with CDN defaults
+        const resolvedAssets = resolveAssets(config?.assets);
         // Send init — worker will build pipeline from config and post 'ready'.
         // Do this before start() so we can load everything up immediately. note start() awaits readyPromise.
         this.worker.postMessage({
             type: 'init',
-            payload: config?.pipeline ?? {},
+            payload: {
+                pipeline: config?.pipeline ?? {},
+                assets: resolvedAssets,
+            },
         });
 
         // Pointer listener for gaze click-to-calibrate TODO: messy coupling here - but has to live on main thread...

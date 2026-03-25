@@ -12,6 +12,7 @@ import { FaceLandmarkerStage } from './stages/FaceLandmarkerStage';
 import { GazeStage } from './stages/GazeStage';
 import { HeartRateStage } from './stages/HeartRateStage';
 import { MiscStage } from './stages/MiscStage';
+import type { AssetConfig } from './assetDefaults';
 
 export interface DefaultPipelineConfig {
     face?: boolean; // | FaceStageConfig; //modelPathBasePath?: string; // e.g., '/public/models/'
@@ -22,7 +23,10 @@ export interface DefaultPipelineConfig {
 
 // Creates a pre-configured BiometricsPipeline with the requested stages.
 // Handles instantiating the underlying AI models and wiring up dependencies.
-export async function createDefaultPipeline(config: DefaultPipelineConfig = {}): Promise<Pipeline> {
+export async function createDefaultPipeline(
+    config: DefaultPipelineConfig = {},
+    assets: Required<AssetConfig>,
+): Promise<Pipeline> {
     const pipeline = new Pipeline();
 
     // Default to true if not explicitly disabled
@@ -36,12 +40,15 @@ export async function createDefaultPipeline(config: DefaultPipelineConfig = {}):
     // Face Landmarker is the foundation. If we need gaze or HR, we need the face.
     const initPromises: Promise<void>[] = [];
 
-    const faceStage = new FaceLandmarkerStage();
+    const faceStage = new FaceLandmarkerStage({
+        wasmBasePath: assets.wasmBasePath,
+        modelPath: assets.faceLandmarkerModelPath,
+    });
     pipeline.addStage(faceStage);
     initPromises.push(faceStage.initialize());
 
     if (useGaze) {
-        const gazeStage = new GazeStage();
+        const gazeStage = new GazeStage({ modelPath: assets.gazeModelPath });
         pipeline.addStage(gazeStage);
         initPromises.push(gazeStage.initialize());
     }

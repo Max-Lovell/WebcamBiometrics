@@ -17,8 +17,9 @@ self.onmessage = async (e: MessageEvent) => {
 
     switch (type) {
         case 'init': {
+            const { pipeline: pipelineConfig, assets } = payload;
             const { createDefaultPipeline } = await import('./defaultPipeline');
-            pipeline = await createDefaultPipeline(payload);
+            pipeline = await createDefaultPipeline(pipelineConfig, assets);
             status = 'idle';
             self.postMessage({ type: 'ready' });
             break;
@@ -67,7 +68,7 @@ self.onmessage = async (e: MessageEvent) => {
 
         case 'dispose': {
             pipeline?.dispose();
-            self.close()
+            self.close();
             break;
         }
     }

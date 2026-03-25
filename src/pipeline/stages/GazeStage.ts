@@ -6,7 +6,7 @@ export interface GazeStageConfig {
     clickTTL?: number;
     maxCalibPoints?: number;
     maxClickPoints?: number;
-    modelPath?: string;
+    modelPath: string;
 }
 
 export class GazeStage implements Stage {
@@ -18,9 +18,9 @@ export class GazeStage implements Stage {
     //   gazeStage.tracker.adapt(...)
     //   gazeStage.tracker.clearCalibrationBuffer()
     readonly tracker: WebEyeTrack;
-    private modelPath?: string;
+    private modelPath: string;
 
-    constructor(config: GazeStageConfig = {}) {
+    constructor(config: GazeStageConfig) {
         this.tracker = new WebEyeTrack(
             {
                 maxCalibPoints: config.maxCalibPoints,
