@@ -7,12 +7,12 @@
 
 export interface AssetConfig {
     wasmBasePath?: string; // Base URL for the MediaPipe Vision WASM
-    faceLandmarkerModelPath?: string; // URL to the face_landmarker.task model file.
+    faceLandmarkerModelPath?: string; // URL to the face_landmarker.task model file.d
     gazeModelPath?: string; // BlazeGaze model path
 }
 
 // Pinned versions
-const __PACKAGE_VERSION__: string = '0.1.0';
+declare const __PACKAGE_VERSION__: string;
 
 // CDN defaults for published package
 const CDN_DEFAULTS: Required<AssetConfig> = {
