@@ -9,7 +9,7 @@ export class MiscStage implements Stage {
 
     async process(ctx: Blackboard): Promise<void> {
         if (!ctx.face?.detected) return;
-        ctx.misc = this.processor.process(ctx.frame, ctx.frameMetadata, ctx.face);
+        ctx.misc = this.processor.process(ctx.frame, ctx.face); //  ctx.frameMetadata,
     }
 
     dispose(): void {

@@ -5,7 +5,7 @@ import {getFrameDimensions} from "../utils/frameUtils";
 import type {VideoFrameData} from "../types";
 
 export class MiscProcessor {
-    process(frame: VideoFrameData, frameMetadata: FrameMetadata, face: FaceContext): MiscResult {
+    process(frame: VideoFrameData, face: FaceContext): MiscResult {// frameMetadata: FrameMetadata,
         const landmarks = face.faceLandmarkerResult.faceLandmarks[0]
         const dims = getFrameDimensions(frame)
         const irisDist = irisDistance(landmarks, dims.width, dims.height)
