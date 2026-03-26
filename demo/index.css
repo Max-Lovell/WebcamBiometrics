@@ -50,6 +50,11 @@ body {
     margin: 10px;
 }
 
+#startButton {
+    position: absolute;
+    display: none;
+}
+
 #webcamContainer {
     position: relative;
     width: fit-content;

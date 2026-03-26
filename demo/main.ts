@@ -134,4 +134,26 @@ client.onWebcamStatus = (status, msg) => {
     console.log(`Webcam: ${status}`, msg);
 };
 
-await client.start();
+try {
+    // Attempt the frictionless auto-start
+    await client.start();
+    console.log("Auto-start successful!");
+} catch (error) {
+    // Auto-start was blocked (likely iOS/Safari requiring a gesture)
+    console.warn("Auto-start blocked. Waiting for user interaction...", error);
+    const startButton = document.getElementById('startButton') as HTMLButtonElement;
+    // Reveal the button to the user
+    startButton.style.display = 'block';
+    // Attach the click listener for the manual fallback
+    startButton.addEventListener('click', async () => {
+        startButton.style.display = 'none'; // Hide button immediately on click
+        try {
+            await client.start();
+            console.log("Manual start successful!");
+        } catch (manualError) {
+            console.error("Camera access denied after click:", manualError);
+            startButton.style.display = 'block'; // Bring the button back if they denied permission
+            alert("Please grant camera permissions to use this feature.");
+        }
+    });
+}
