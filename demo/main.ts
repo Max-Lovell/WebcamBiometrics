@@ -1,5 +1,5 @@
-import type {BiometricsResult} from "../src/pipeline/types";
-import { BiometricsClient } from '../src/pipeline/BiometricsClient';
+import type {BiometricsResult} from "../src";
+import { BiometricsClient } from '../src';
 import { drawPulseMask } from "./drawingUtils/drawPulseMask";
 import { PulseGraph } from './drawingUtils/PulseGraph';
 import { AccuracyTracker } from './drawingUtils/AccuracyTracker';
