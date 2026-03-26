@@ -14,19 +14,13 @@ let status: 'initializing' | 'idle' | 'inference' | 'calib' = 'initializing';
 
 self.onmessage = async (e: MessageEvent) => {
     const { type, payload } = e.data;
-
     switch (type) {
         case 'init': {
             face = new FaceLandmarkerClient();
-            gaze = new WebEyeTrack(
-                payload?.maxPoints,
-                payload?.clickTTL,
-                payload?.maxCalibPoints,
-                payload?.maxClickPoints,
-            );
+            gaze = new WebEyeTrack();
             heart = new HeartRateMonitor(payload?.heartRateConfig);
 
-            await face.initialize();
+            await face.initialize(payload.assets.wasmBasePath, payload.assets.modelPath);
             await gaze.initialize(payload?.modelPath);
 
             status = 'idle';
