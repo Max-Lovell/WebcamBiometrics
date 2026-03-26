@@ -77,6 +77,11 @@ export default class WebcamClient {
 
             this.videoElement.srcObject = this.stream;
 
+            // Video setting
+            this.videoElement.muted = true; // iOS can block autoplay if thinks audio attached and not played by user interaction
+            this.videoElement.autoplay = true // ensures browser primed to start showing frames upon metadata clear
+            this.videoElement.playsInline = true; // stop playing fullscreen by default
+
             // Wait for video to be ready
             await new Promise<void>((resolve) => {
                 if (this.videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) return resolve();
