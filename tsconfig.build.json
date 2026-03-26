@@ -3,7 +3,6 @@
   "compilerOptions": {
     "noEmit": false,
     "declaration": true,
-    "declarationOnly": true,
     "emitDeclarationOnly": true,
     "declarationDir": "./dist/types",
     "allowImportingTsExtensions": false,
