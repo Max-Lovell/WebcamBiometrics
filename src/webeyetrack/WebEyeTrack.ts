@@ -140,6 +140,8 @@ export default class WebEyeTrack {
   public maxClickPoints: number;
   public clickTTL: number;
 
+  private isAdapting: boolean = false;
+
   constructor(opts: WebEyeTrackOptions = {}) {
     this.blazeGaze = new BlazeGaze();
     this.frameConverter = new FrameConverter();
@@ -495,6 +497,11 @@ export default class WebEyeTrack {
       innerLR: number = 1e-5,    // matches Python webeyetrack.py:325
       ptType: "calib" | "click" = "calib"
   ): Promise<void> {
+    if (this.isAdapting) {
+      console.warn("Model is already adapting. Ignoring click to prevent memory crash.");
+      return;
+    }
+    this.isAdapting = true;
     // TODO: two .array calls here could be avoided - affine transformation in TF.js ops would avoid that.
     // Prune old clickstream data (calibration buffer is never pruned)
     this.pruneCalibData();
@@ -645,6 +652,7 @@ export default class WebEyeTrack {
       // Optimizer creates internal variables (momentum buffers, variance accumulators)
       // that persist until explicitly disposed
       opt.dispose();
+      this.isAdapting = false;
     }
   }
 
