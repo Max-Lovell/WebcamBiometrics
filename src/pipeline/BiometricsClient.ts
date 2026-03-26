@@ -53,7 +53,7 @@ export class BiometricsClient {
     private readyResolve!: () => void;
 
     // Backpressure — true while worker is processing a frame
-    private workerBusy = false;
+    private workerBusy = true;
 
     // Pending command promises (for request/response pattern)
     private commandId = 0;
@@ -140,7 +140,7 @@ export class BiometricsClient {
         );
         // Wait for worker to finish loading models
         await this.readyPromise;
-
+        this.workerBusy = false;
     }
 
     // Stop capture. Can be resumed with start().
