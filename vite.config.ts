@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => {
             },
             // base sets the URL prefix for assets. GitHub Pages serves at https://USERNAME.github.io/REPO_NAME/, so assets need that prefix.
             // Change this to match repo name if forking
-            base: '/webcam-biometrics/',
+            base: '/WebcamBiometrics/',
         }
     }
 
