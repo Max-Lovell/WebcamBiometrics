@@ -1,5 +1,5 @@
-import { HeartRateMonitor } from '../../rPPG';
-import type { HeartRateMonitorConfig } from '../../rPPG';
+import { HeartRateMonitor } from '../../rppg';
+import type { HeartRateMonitorConfig } from '../../rppg';
 import type {Stage, Blackboard} from '../types';
 
 export class HeartRateStage implements Stage {

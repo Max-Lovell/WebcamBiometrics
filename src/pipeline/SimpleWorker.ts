@@ -2,9 +2,9 @@
  * SIMPLE WORKER
  * Prototype to test out a more straightforward worker to potentially use. Uses the client but not the worker/pipeline files
 */
-import FaceLandmarkerClient from '../Core/FaceLandmarkerClient';
-import WebEyeTrack from '../WebEyeTrack/WebEyeTrack';
-import { HeartRateMonitor } from '../rPPG';
+import FaceLandmarkerClient from '../core/FaceLandmarkerClient';
+import WebEyeTrack from '../webeyetrack/WebEyeTrack';
+import { HeartRateMonitor } from '../rppg';
 import type { BiometricsResult } from './types';
 
 let face: FaceLandmarkerClient;

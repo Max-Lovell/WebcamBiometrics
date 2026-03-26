@@ -1,4 +1,4 @@
-import FaceLandmarkerClient from '../../Core/FaceLandmarkerClient';
+import FaceLandmarkerClient from '../../core/FaceLandmarkerClient';
 import type {Stage, Blackboard} from '../types';
 
 export interface FaceLandmarkerStageConfig {

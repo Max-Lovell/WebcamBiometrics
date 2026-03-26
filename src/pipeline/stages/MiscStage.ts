@@ -1,4 +1,4 @@
-import { MiscProcessor } from '../../Misc';
+import { MiscProcessor } from '../../misc';
 import type { Stage, Blackboard } from '../types';
 
 export class MiscStage implements Stage {

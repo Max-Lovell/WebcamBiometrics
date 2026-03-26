@@ -2,8 +2,8 @@
 // defines "contract" for the pipeline/blackboard architecture where each stage reads from/writes to shared blackboard (FrameContext)
 // Can add new biometric (e.g. Affect) with new optional slot on FrameContext and register with addStage()
 import type {FaceLandmarkerResult} from '@mediapipe/tasks-vision';
-import type {HeartRateResult} from '../rPPG';
-import type {WebEyeTrackResult} from "../WebEyeTrack/types";
+import type {HeartRateResult} from '../rppg';
+import type {WebEyeTrackResult} from "../webeyetrack/types";
 import type {VideoFrameData} from "../types";
 
 // Face landmarks + derived head pose, Written by FaceLandmarkerStage; read by GazeStage, HeartRateStage, etc. TODO: could put in /Core

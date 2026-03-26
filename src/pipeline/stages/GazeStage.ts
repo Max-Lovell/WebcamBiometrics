@@ -1,4 +1,4 @@
-import WebEyeTrack from '../../WebEyeTrack/WebEyeTrack';
+import WebEyeTrack from '../../webeyetrack/WebEyeTrack';
 import type {Stage, Blackboard} from '../types';
 
 export interface GazeStageConfig {

@@ -23,8 +23,8 @@ export type {
 } from './pipeline/types';
 
 // ── Sub-module result types ─────────────────────────────────────────────────
-export type { WebEyeTrackResult } from './WebEyeTrack/types';
-export type { HeartRateResult } from './rPPG';
+export type { WebEyeTrackResult } from './webeyetrack/types';
+export type { HeartRateResult } from './rppg';
 
 // ── Shared types ────────────────────────────────────────────────────────────
 export type { Point, VideoFrameData } from './types';

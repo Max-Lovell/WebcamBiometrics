@@ -7,11 +7,11 @@
  * Worker, pipeline, and stages are inside a worker thread and communicate over that boundary via postMessages
  */
 
-import WebcamClient from '../Core/WebcamClient';
-import type { WebcamStatus } from '../Core/WebcamClient';
+import WebcamClient from '../core/WebcamClient';
+import type { WebcamStatus } from '../core/WebcamClient';
 import type { BiometricsResult, FrameMetadata } from './types';
 import type { VideoFrameData } from '../types';
-import type { HeartRateMonitorConfig } from "../rPPG";
+import type { HeartRateMonitorConfig } from "../rppg";
 import { resolveAssets } from './assetDefaults';
 import type { AssetConfig } from './assetDefaults';
 
