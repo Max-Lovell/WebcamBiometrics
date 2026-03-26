@@ -40,6 +40,10 @@ jobs:
       - name: Build demo from source
         run: npm run build:demo
 
+      # prevent Jekyll from ignoring Vite chunks
+      - name: Bypass Jekyll
+        run: touch dist-demo/.nojekyll
+
       - name: Debug - list output
         run: ls -la dist-demo/ && ls -la dist-demo/assets/
 
