@@ -18,7 +18,8 @@
         "types": "./dist/types/index.d.ts",
         "default": "./dist/webcam-biometrics.cjs"
       }
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
