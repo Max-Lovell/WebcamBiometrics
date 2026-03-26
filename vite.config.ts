@@ -82,12 +82,10 @@ export default defineConfig(({ mode }) => {
             rollupOptions: {
                 //  external as used on the main thread and are regular dependencies.
                 external: [
-                    'mathjs',
                     'ml-matrix',
                 ],
                 output: {
                     globals: {
-                        'mathjs': 'math',
                         'ml-matrix': 'mlMatrix',
                     },
                 },
