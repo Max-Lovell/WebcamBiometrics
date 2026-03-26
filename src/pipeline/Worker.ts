@@ -7,6 +7,7 @@
  */
 
 import { Pipeline } from './Pipeline';
+import { createDefaultPipeline } from './defaultPipeline';
 import type { BiometricsResult } from './types';
 
 let pipeline: Pipeline;
@@ -18,7 +19,6 @@ self.onmessage = async (e: MessageEvent) => {
     switch (type) {
         case 'init': {
             const { pipeline: pipelineConfig, assets } = payload;
-            const { createDefaultPipeline } = await import('./defaultPipeline');
             pipeline = await createDefaultPipeline(pipelineConfig, assets);
             status = 'idle';
             self.postMessage({ type: 'ready' });
