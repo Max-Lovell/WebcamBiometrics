@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Real-time webcam biometrics: face landmarks, gaze tracking, and heart rate estimation",
   "author": "Max <mel29@sussex.ac.uk>",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/webcam-biometrics.cjs",
   "module": "./dist/webcam-biometrics.js",

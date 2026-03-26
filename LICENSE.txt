@@ -1,0 +1,31 @@
+WebcamBiometrics - Browser-based Biometric Analysis SDK
+Copyright (c) 2025 Max Lovell, University of Sussex
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+────────────────────────────────────────────────────────────────────────────────
+COMMERCIAL LICENSE
+
+A commercial license is available for use in closed-source and proprietary
+applications. Contact: [mel29 @ sussex .ac.uk]
+────────────────────────────────────────────────────────────────────────────────
+THIRD-PARTY NOTICES
+
+  src/webeyetrack/  — MIT License
+    Copyright (c) 2025 Eduardo Davalos, Yike Zhang, Amanda Goodwin, Gautam Biswas
+    See src/webeyetrack/LICENSE.txt for full terms.
+
+  public/wasm/  — Apache License 2.0 (MediaPipe / Google)
+    See https://github.com/google-ai-edge/mediapipe for full terms.
+────────────────────────────────────────────────────────────────────────────────
