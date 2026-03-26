@@ -24,7 +24,7 @@ import type {
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import type { VideoFrameData } from "../types";
-import { FrameConverter } from "../utils/frameUtils";
+import { FrameConverter, getFrameDimensions } from "../utils/frameUtils";
 
 // ============================================================================
 // Support Tensor Types
@@ -397,10 +397,16 @@ export default class WebEyeTrack {
     const tic2 = performance.now();
 
     // Blink detection via Eye Aspect Ratio
-    const leftEAR = computeEAR(result.faceLandmarks[0], "left");
-    const rightEAR = computeEAR(result.faceLandmarks[0], "right");
+    // Safely extract width and height from the frame (handles VideoFrame, ImageBitmap, ImageData)
+    // We cast to 'any' briefly to safely check for VideoFrame's displayWidth property
+    const { width, height } = getFrameDimensions(frame);
+
+    // Blink detection via Eye Aspect Ratio (now using pixel coordinates)
+    const leftEAR = computeEAR(result.faceLandmarks[0], "left", width, height);
+    const rightEAR = computeEAR(result.faceLandmarks[0], "right", width, height);
+
     const gazeState: "open" | "closed" =
-        leftEAR < 0.2 || rightEAR < 0.2 ? "closed" : "open";
+        leftEAR < 0.1 || rightEAR < 0.1 ? "closed" : "open";
 
     if (gazeState === "closed") {
       return {
