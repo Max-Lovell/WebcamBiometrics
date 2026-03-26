@@ -653,9 +653,7 @@ export default class WebEyeTrack {
       // that persist until explicitly disposed
       opt.dispose();
       this.isAdapting = false;
-      // Force WebGL texture cleanup on mobile
-      tf.engine().endScope();
-      tf.engine().startScope();
+
     }
   }
 
