@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import pkg from './package.json' with { type: 'json' };
+import { inlineWorkerPlugin } from './vite-plugin-inline-worker';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -38,6 +39,7 @@ export default defineConfig(({ mode }) => {
             build: {
                 outDir: path.resolve(__dirname, 'dist-demo'),
                 emptyOutDir: true,
+                target: 'esnext',
             },
             // base sets the URL prefix for assets. GitHub Pages serves at https://USERNAME.github.io/REPO_NAME/, so assets need that prefix.
             // Change this to match repo name if forking
@@ -47,8 +49,23 @@ export default defineConfig(({ mode }) => {
 
     // Library build (npm run build)
     // Produces the NPM package in dist/.
+    // The inlineWorkerPlugin pre-builds Worker.ts into a self-contained string,
+    // so the published library has no separate worker file to serve.
     return {
         ...shared,
+        plugins: [
+            inlineWorkerPlugin(),
+            {
+                name: 'drop-worker-chunk',
+                generateBundle(_, bundle) {
+                    for (const key of Object.keys(bundle)) {
+                        if (key.includes('Worker')) {
+                            delete bundle[key];
+                        }
+                    }
+                },
+            },
+        ],
         build: {
             lib: {
                 entry: path.resolve(__dirname, 'src/index.ts'),
@@ -63,25 +80,18 @@ export default defineConfig(({ mode }) => {
             outDir: 'dist',
             sourcemap: true,
             rollupOptions: {
+                //  external as used on the main thread and are regular dependencies.
                 external: [
-                    '@mediapipe/tasks-vision',
-                    '@tensorflow/tfjs',
                     'mathjs',
                     'ml-matrix',
                 ],
                 output: {
                     globals: {
-                        '@mediapipe/tasks-vision': 'MediaPipeVision',
-                        '@tensorflow/tfjs': 'tf',
                         'mathjs': 'math',
                         'ml-matrix': 'mlMatrix',
                     },
                 },
             },
-        },
-        worker: {
-            format: 'es',
-            plugins: () => [],
         },
     }
 })
