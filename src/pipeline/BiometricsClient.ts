@@ -133,12 +133,14 @@ export class BiometricsClient {
     // Start capturing and processing frame - resolves once the worker is initialized and the webcam is streaming.
     async start(): Promise<void> {
         if (this._disposed) throw new Error('Client is disposed');
-        // Wait for worker to finish loading models
-        await this.readyPromise;
-        // Start webcam — each frame is sent to the worker
+        // Start webcam — each frame is sent to the worker.
+        // Start before loading to preserve the user gesture context on iOS - frames dropped by backpressure until ready
         await this.webcam.startWebcam(
             (frame: VideoFrameData, metadata: FrameMetadata) => this.onFrame(frame, metadata),
         );
+        // Wait for worker to finish loading models
+        await this.readyPromise;
+
     }
 
     // Stop capture. Can be resumed with start().
