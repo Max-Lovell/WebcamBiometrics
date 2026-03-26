@@ -1,4 +1,4 @@
-import type {FaceContext, FrameMetadata} from '../pipeline/types';
+import type {FaceContext} from '../pipeline/types';
 import type { MiscResult } from './types';
 import {irisDistance} from "./utils/distance";
 import {getFrameDimensions} from "../utils/frameUtils";
