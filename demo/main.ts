@@ -117,7 +117,13 @@ window.addEventListener('keydown', (e) => {
     }
 });
 // ─── Client setup ───────────────────────────────────────────────────────────
-const client = new BiometricsClient('webcam');
+const client = new BiometricsClient('webcam', {
+    assets: {
+        wasmBasePath: import.meta.env.BASE_URL + 'wasm',
+        faceLandmarkerModelPath: import.meta.env.BASE_URL + 'wasm/face_landmarker.task',
+        gazeModelPath: import.meta.env.BASE_URL + 'models/model.json',
+    }
+});
 
 client.onResult = (result) => {
     result?.frameMetadata?.trace?.push({ step: 'frame_received', timestamp: performance.now() });
