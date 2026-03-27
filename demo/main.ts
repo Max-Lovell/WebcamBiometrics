@@ -119,8 +119,11 @@ window.addEventListener('keydown', (e) => {
 // ─── Client setup ───────────────────────────────────────────────────────────
 const client = new BiometricsClient('webcam', {
     assets: {
-        wasmBasePath: import.meta.env.BASE_URL + 'wasm',
-        faceLandmarkerModelPath: import.meta.env.BASE_URL + 'wasm/face_landmarker.task',
+        // Note here: consider these local files for dev mode...)
+        // wasmBasePath: import.meta.env.BASE_URL + 'wasm',
+        // faceLandmarkerModelPath: import.meta.env.BASE_URL + 'wasm/face_landmarker.task',
+        wasmBasePath: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm",
+        faceLandmarkerModelPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
         gazeModelPath: import.meta.env.BASE_URL + 'models/model.json',
     }
 });
