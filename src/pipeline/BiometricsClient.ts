@@ -232,13 +232,16 @@ export class BiometricsClient {
                 break;
 
             case 'stepResult':
+                if (e.data.result?.errors) {
+                    console.error('[Client] Pipeline caught errors during execution:', e.data.result.errors);
+                }
                 this.workerBusy = false;
                 this.onResult(e.data.result);
                 break;
 
             case 'stepError':
+                console.warn('[Client] step error:', e.data.error);
                 this.workerBusy = false;
-                console.warn('[BiometricsClient] Worker step error:', e.data.error);
                 break;
 
             case 'commandResult': {
