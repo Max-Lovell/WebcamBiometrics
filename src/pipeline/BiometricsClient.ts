@@ -99,6 +99,9 @@ export class BiometricsClient {
         // Wire up message handler
         this.messageHandler = (e: MessageEvent) => this.handleWorkerMessage(e); // For receiving messages back
         this.worker.onmessage = this.messageHandler;
+        this.worker.onerror = (err) => {
+            console.error('[BiometricsClient] Worker failed to load:', err);
+        };
 
         // Resolve assets: merge user overrides with CDN defaults
         const resolvedAssets = resolveAssets(config?.assets);
