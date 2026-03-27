@@ -263,6 +263,10 @@ export class BiometricsClient {
                 break;
             }
 
+            case 'log':
+                console.log('[Worker]', e.data.message);
+                break;
+
             default:
                 console.warn(`[BiometricsClient] Unknown worker message: ${type}`);
                 break;
