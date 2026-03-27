@@ -81,7 +81,14 @@ if (typeof (self as any).import !== 'function') {
 
 // Fix Bug 3: vision_wasm_module_internal.js (lines 8369-8374) has a strict-mode scoping bug
 // where custom_dbg is declared inside an if-block but referenced outside it.
-(self as any).custom_dbg = (...args: unknown[]) => console.warn(...args);
+(self as any).custom_dbg = (...args: unknown[]) => {
+    const msg = String(args[0]);
+    // Suppress MediaPipe's C++ INFO/WARNING lines that get misrouted to stderr
+    if (msg.startsWith('INFO:') || msg.startsWith('W0') || msg.startsWith('I0')) {
+        return;
+    }
+    console.warn(...args);
+};
 
 self.onmessage = async (e: MessageEvent) => {
     const { type, payload } = e.data;
