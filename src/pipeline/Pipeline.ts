@@ -47,6 +47,11 @@
 import type {BiometricsResult, Stage, FrameMetadata, Blackboard} from './types';
 import type { VideoFrameData } from '../types';
 
+// Chrome on iOS can't console log from the worker.so this passes back messages to client
+function log(...args: unknown[]) {
+    self.postMessage({ type: 'log', message: args.map(String).join(' ') });
+}
+
 export class Pipeline {
     private stages: Stage[] = [];
     private stageMap: Map<string, Stage> = new Map();
@@ -136,6 +141,7 @@ export class Pipeline {
                 try { // TODO: stages that depend on failed stage could skip rather than throw or check ctx.errors map or blackboard for deps
                     await stage.process(ctx);  // async run process function from stage
                 } catch (err) { // TODO: stage.reset() on face detection fail?
+                    log('STAGE ERROR in', stage.name, ':', String(err))
                     ctx.errors ??= {};
                     ctx.errors[stage.name] = String(err);
                 }

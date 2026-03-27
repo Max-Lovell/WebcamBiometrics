@@ -26,6 +26,7 @@ self.onmessage = async (e: MessageEvent) => {
         }
 
         case 'step': {
+            log('[Worker] step received, status:', status, 'frame:', typeof payload.frame, payload.frame?.width, payload.frame?.height);
             if (status !== 'idle') {
                 payload.frame?.close?.(); // Note that Client will close this itself, but left here to allow decoupling.
                 if (status === 'initializing') {
@@ -36,9 +37,13 @@ self.onmessage = async (e: MessageEvent) => {
             status = 'inference';
             try {
                 const result: BiometricsResult = await pipeline.processFrame(payload.frame, payload.context);
+                if (result.errors) {
+                    log('PIPELINE ERRORS:', JSON.stringify(result.errors));
+                }
                 self.postMessage({ type: 'stepResult', result });
             } catch (err) {
                 console.error(err);
+                log('[Worker] step error:', err);
                 self.postMessage({ type: 'stepError', error: String(err) });
             } finally {
                 status = 'idle';
