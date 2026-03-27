@@ -22,6 +22,12 @@ export default defineConfig(({ mode }) => {
             root: 'demo',
             publicDir: path.resolve(__dirname, 'public'),
             plugins: [basicSsl()],
+            optimizeDeps: {
+                exclude: ['@mediapipe/tasks-vision'],
+            },
+            worker: {
+                format: 'es',
+            },
             resolve: {
                 alias: {
                     // If still need the local vitals alias:
