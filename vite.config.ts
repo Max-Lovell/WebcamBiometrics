@@ -3,6 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import pkg from './package.json' with { type: 'json' };
 import { inlineWorkerPlugin } from './vite-plugin-inline-worker';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -20,6 +21,7 @@ export default defineConfig(({ mode }) => {
             ...shared,
             root: 'demo',
             publicDir: path.resolve(__dirname, 'public'),
+            plugins: [basicSsl()],
             resolve: {
                 alias: {
                     // If still need the local vitals alias:
