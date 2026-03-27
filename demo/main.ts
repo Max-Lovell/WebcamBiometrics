@@ -1,9 +1,9 @@
 import type {BiometricsResult} from "../src";
 import { BiometricsClient } from '../src';
-import { drawPulseMask } from "./drawingUtils/drawPulseMask";
-import { PulseGraph } from './drawingUtils/PulseGraph';
-import { AccuracyTracker } from './drawingUtils/AccuracyTracker';
-import { TraceDisplay } from './drawingUtils/TraceDisplay';
+import { drawPulseMask } from "./drawing/drawPulseMask";
+import { PulseGraph } from './drawing/PulseGraph';
+import { AccuracyTracker } from './drawing/AccuracyTracker';
+import { TraceDisplay } from './drawing/TraceDisplay';
 
 // ─── Pulse Graph ────────────────────────────────────────────────────────────
 const cursor = document.getElementById('cursor') as HTMLDivElement;
