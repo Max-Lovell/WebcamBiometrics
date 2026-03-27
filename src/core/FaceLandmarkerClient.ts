@@ -12,22 +12,11 @@ export default class FaceLandmarkerClient {
   }
 
   async initialize(wasmPath: string, modelPath: string): Promise<FaceLandmarker|undefined> {
-    // Note not done in constructor as they can't be async. Consider static factory pattern here.
-    const filesetResolver = await FilesetResolver.forVisionTasks(wasmPath);
+    // Note useModule parameter currently undocumented, see mediapipe/tasks/web/core/fileset_resolver.ts.template createFileset()
+    // Conditionally calls vision_wasm_module_internal - ES module variant that will work with Vite.
+    const filesetResolver = await FilesetResolver.forVisionTasks(wasmPath, true);
     try {
-      // Facelandmarker is broken for vite (self.import() error) so below is a hack to get it working
-      // Noted here: https://github.com/google-ai-edge/mediapipe/issues/5257
-      // TODO: find safer fix than eval here??
       // Find new files at https://www.npmjs.com/package/@mediapipe/tasks-vision
-      // Current version 10.32
-        // wasm: https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm
-      const response = await fetch(filesetResolver.wasmLoaderPath);
-      // Use indirect eval to execute the script in the global scope. This is required for the library to find the ModuleFactory.
-      (0, eval)(await response.text());
-      // FIX: Cast to 'any' to bypass TS2790 strict check
-      // delete wasmLoaderPath to trick FaceLandmarker.createFromOptions into thinking it doesn't need to load the script
-      delete (filesetResolver as any).wasmLoaderPath;
-
       return this.faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
           modelAssetPath: modelPath,
@@ -41,7 +30,7 @@ export default class FaceLandmarkerClient {
         // minTrackingConfidence: 0.5 // note set this higher (.7) for a more stable solution, or decrease for smoother (.3)
       });
     } catch (e) {
-      console.error("Failed to manually load MediaPipe WASM loader:", e);
+      console.error("Failed to initialize FaceLandmarker:", e);
     }
   }
 
