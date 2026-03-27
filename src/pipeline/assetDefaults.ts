@@ -16,7 +16,7 @@ declare const __PACKAGE_VERSION__: string;
 
 // CDN defaults for published package
 const CDN_DEFAULTS: Required<AssetConfig> = {
-    wasmBasePath: `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm`, // update version here
+    wasmBasePath: `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm`, // update version here
     // https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker#models
     faceLandmarkerModelPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
     gazeModelPath: `https://cdn.jsdelivr.net/npm/webcam-biometrics@${__PACKAGE_VERSION__}/models/blazegaze/model.json`,
