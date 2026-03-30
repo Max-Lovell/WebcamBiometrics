@@ -25,6 +25,7 @@
   },
   "files": [
     "dist/webcam-biometrics.*",
+    "!dist/*.map",
     "dist/types",
     "models",
     "README.md",
