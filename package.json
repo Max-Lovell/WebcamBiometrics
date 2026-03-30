@@ -24,7 +24,9 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
+    "dist/webcam-biometrics.*",
+    "dist/types",
+    "dist/models",
     "models",
     "README.md",
     "LICENSE"
