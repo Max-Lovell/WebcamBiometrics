@@ -9,6 +9,7 @@
   "main": "./dist/webcam-biometrics.cjs",
   "module": "./dist/webcam-biometrics.js",
   "types": "./dist/types/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "import": {
