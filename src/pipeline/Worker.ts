@@ -6,31 +6,6 @@
  * A generic message router - doesn't know what stages exist or what they do.
  */
 
-// Polyfill minimal document for MediaPipe's broken iOS detection in workers
-// MediaPipe checks "ontouchend" in document to detect iOS - this prevents the crash
-if (typeof document === 'undefined') {
-    const handler: ProxyHandler<any> = {
-        get(_target, prop) {
-            console.warn('[Worker document stub] accessed:', String(prop));
-            if (prop === 'createElement') {
-                return (tag: string) => {
-                    console.warn('[Worker document stub] createElement:', tag);
-                    if (tag === 'canvas') {
-                        return new OffscreenCanvas(1, 1);
-                    }
-                    return {};
-                };
-            }
-            return undefined;
-        },
-        has(_target, prop) {
-            console.warn('[Worker document stub] "in" check:', String(prop));
-            return false;
-        },
-    };
-    (self as any).document = new Proxy({}, handler);
-}
-
 import { Pipeline } from './Pipeline';
 import { createDefaultPipeline } from './defaultPipeline';
 import type { BiometricsResult } from './types';
@@ -51,6 +26,8 @@ function log(...args: unknown[]) {
 // Fix Bug 1: MediaPipe accesses `document` in workers for iOS/Mac detection.
 // Provide a Proxy stub that returns OffscreenCanvas for createElement("canvas")
 // and returns false for all "in" checks (e.g. "ontouchend" in document).
+// Polyfill minimal document for MediaPipe's broken iOS detection in workers
+// MediaPipe checks "ontouchend" in document to detect iOS - this prevents the crash
 if (typeof document === 'undefined') {
     const handler: ProxyHandler<any> = {
         get(_target, prop) {
@@ -103,7 +80,7 @@ self.onmessage = async (e: MessageEvent) => {
         }
 
         case 'step': {
-            log('[Worker] step received, status:', status, 'frame:', typeof payload.frame, payload.frame?.width, payload.frame?.height);
+            // log('[Worker] step received, status:', status, 'frame:', typeof payload.frame, payload.frame?.width, payload.frame?.height);
             if (status !== 'idle') {
                 payload.frame?.close?.(); // Note that Client will close this itself, but left here to allow decoupling.
                 if (status === 'initializing') {
