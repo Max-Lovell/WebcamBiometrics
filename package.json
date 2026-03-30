@@ -26,7 +26,6 @@
   "files": [
     "dist/webcam-biometrics.*",
     "dist/types",
-    "dist/models",
     "models",
     "README.md",
     "LICENSE"
