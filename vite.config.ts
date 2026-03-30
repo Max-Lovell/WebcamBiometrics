@@ -74,18 +74,7 @@ export default defineConfig(({ mode }) => {
                 },
             },
             outDir: 'dist',
-            sourcemap: true,
-            rollupOptions: {
-                //  external as used on the main thread and are regular dependencies.
-                external: [
-                    'ml-matrix',
-                ],
-                output: {
-                    globals: {
-                        'ml-matrix': 'mlMatrix',
-                    },
-                },
-            },
+            sourcemap: true
         },
     }
 })
