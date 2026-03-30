@@ -14,10 +14,10 @@ import type { VideoFrameData } from '../types';
 import type { HeartRateMonitorConfig } from "../rppg";
 import { resolveAssets } from './assetDefaults';
 import type { AssetConfig } from './assetDefaults';
+import { createWorker } from './createWorker';
 
-// Injected at compile time by vite-plugin-inline-worker (library build only).
-// In dev/demo builds this is never defined, so the URL-based fallback is used.
-declare const __INLINE_WORKER__: string | undefined;
+// Worker code is injected at compile time by vite-plugin-inline-worker (library build only).
+// In dev/demo builds the markers are ignored and Vite handles the worker natively via URL.
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 export interface TrackerConfig {
@@ -82,19 +82,9 @@ export class BiometricsClient {
         this.webcam.onStatusChange = (status, msg) => this.onWebcamStatus(status, msg);
 
         // Spin up worker
-        // Library build: worker code is inlined as a string constant by vite-plugin-inline-worker
-        // Dev/demo build: Vite handles the worker natively via URL
-        if (typeof __INLINE_WORKER__ !== 'undefined') {
-            const blob = new Blob([__INLINE_WORKER__], { type: 'application/javascript' });
-            const url = URL.createObjectURL(blob);
-            this.worker = new Worker(url);
-            URL.revokeObjectURL(url);
-        } else {
-            this.worker = new Worker(
-                new URL('./Worker.ts', import.meta.url),
-                { type: 'module' },
-            );
-        }
+        // Library build: vite-plugin-inline-worker replaces this block with Blob-based creation
+        // Dev/demo build: markers are ignored, Vite handles the worker natively via URL
+        this.worker = createWorker();
 
         // Wire up message handler
         this.messageHandler = (e: MessageEvent) => this.handleWorkerMessage(e); // For receiving messages back

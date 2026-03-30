@@ -1,51 +1,33 @@
-/**
- * Vite Plugin: Inline Worker Builder
- *
- * Two-phase build approach:
- * 1. Before the main library build, compile Worker.ts into a self-contained ES bundle
- * 2. Inject the compiled code as a compile-time constant (__INLINE_WORKER__) via Vite's `define`
- *
- * BiometricsClient checks `typeof __INLINE_WORKER__` at runtime:
- * - Library build: the constant exists, worker is created from a Blob URL
- * - Dev/demo build: the constant is undefined, Vite handles the worker via URL
- *
- * Usage in vite.config.ts:
- *   import { inlineWorkerPlugin } from './vite-plugin-inline-worker'
- *   // Only add to the library build's plugins array
- *   plugins: [inlineWorkerPlugin()]
- */
-
 import { build, type Plugin, type Rollup } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// This plugin() is called by vite in vite.config.ts in library/prod mode
+// Vite's dev server can serve workers on the fly from new Worker()...
+// BUT if installing from NPM (Vite 'library' mode) import.meta.url points to the wrong place
+// This function will quickly intercept the createWorker() code and replace it with a big string containing the entire worker's code.
 export function inlineWorkerPlugin(): Plugin {
     let workerCode: string = '';
 
     return {
         name: 'inline-worker',
-        enforce: 'pre',
+        enforce: 'pre', // Run before Vite
 
-        async buildStart() {
-            // Build the worker into a self-contained bundle. note config() below runs first
+        async buildStart() { // runs once before any modules are processed.
+            // Build the worker into a self-contained bundle.
             // Uses 'es' format so top-level self.onmessage works as-is.
             const result = await build({
                 configFile: false,
                 build: {
-                    write: false, // Don't write to disk — keep in memory
+                    write: false,
                     lib: {
-                        entry: path.resolve(__dirname, 'src/pipeline/Worker.ts'),
-                        formats: ['es'],
-                        fileName: () => 'worker.js',
+                        entry: path.resolve(__dirname, 'src/pipeline/Worker.ts'), // Highest parent file to replace
+                        formats: ['es'], // Module type
+                        fileName: () => 'worker.js', // Output file name
                     },
-                    rollupOptions: {
-                        // Everything must be bundled INTO the worker — no externals.
-                        // MediaPipe and TF.js JS code is included here; the heavy
-                        // WASM/model binaries are still fetched at runtime via URLs.
-                        external: [],
-                    },
+                    rollupOptions: { external: [] },
                     minify: true,
                     sourcemap: false,
                 },
@@ -54,10 +36,8 @@ export function inlineWorkerPlugin(): Plugin {
                         process.env.npm_package_version ?? '0.0.0'
                     ),
                 },
-
             });
 
-            // Extract the generated code string
             const outputs = Array.isArray(result) ? result : [result];
             const output = outputs[0] as Rollup.RollupOutput;
             const chunk = output.output.find(
@@ -69,15 +49,27 @@ export function inlineWorkerPlugin(): Plugin {
             workerCode = chunk.code;
         },
 
-        // Inject the worker code as a compile-time constant.
-        // replaces every occurrence of __INLINE_WORKER__ with the string literal.
-        transform(code, _) {
-            if (code.includes('__INLINE_WORKER__')) {
-                return code.replaceAll(
-                    '__INLINE_WORKER__',
-                    JSON.stringify(workerCode)
-                );
-            }
+        // Replace the entire createWorker module before Vite's worker detection ever sees the new URL() pattern.
+        // Note define() doesn't work here for this unfortunately
+        load(id) { // Load() is custom loader hook for replacing an entire module's contents
+            if (!id.includes('createWorker')) return; // Called on every module so stop those running - could be more specific...
+
+            return `
+export function createWorker() {
+    const b = new Blob([${JSON.stringify(workerCode)}], { type: 'application/javascript' });
+    const u = URL.createObjectURL(b);
+    const w = new Worker(u);
+    URL.revokeObjectURL(u);
+    return w;
+}`;
         },
     };
 }
+
+// WHEN SCREWING WITH THIS RUN CHECKS AFTER BUILD:
+// grep "new Blob" dist/webcam-biometrics.js | head -1 // Confirm the Blob pattern is in the output
+// grep -c "assets/Worker" dist/webcam-biometrics.js //  Confirm there's NO asset URL pattern (the thing we're avoiding)
+// grep -c "new URL" dist/webcam-biometrics.js // Confirm no new URL() worker pattern survived
+// ls -lh dist/webcam-biometrics.js // Confirm the worker code is actually substantial (not empty) - should be ~2MB
+// grep -oP 'new Blob\(\[.{0,80}' dist/webcam-biometrics.js | head -1 // Extract a snippet of what's inside the Blob constructor - should contain minified worker code
+// npm run dev — should start without errors and the webcam should work // Confirm dev still works (Vite should handle the URL pattern natively)

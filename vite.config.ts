@@ -61,19 +61,7 @@ export default defineConfig(({ mode }) => {
     // so the published library has no separate worker file to serve.
     return {
         ...shared,
-        plugins: [
-            inlineWorkerPlugin(),
-            {
-                name: 'drop-worker-chunk',
-                generateBundle(_, bundle) {
-                    for (const key of Object.keys(bundle)) {
-                        if (key.includes('Worker')) {
-                            delete bundle[key];
-                        }
-                    }
-                },
-            },
-        ],
+        plugins: [ inlineWorkerPlugin() ],
         build: {
             lib: {
                 entry: path.resolve(__dirname, 'src/index.ts'),
