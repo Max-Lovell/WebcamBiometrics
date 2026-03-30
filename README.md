@@ -138,7 +138,7 @@ AGPL-3.0-or-later. See [LICENSE](./LICENSE).
 
 Free for open-source and academic/research use. If you're building something
 closed-source or commercial, a commercial license is available —
-get in touch at [your-email@sussex.ac.uk].
+get in touch at [max_lovell [at] hotmail [dot] co [dot] uk].
 
 ### Third-Party Notices
 
