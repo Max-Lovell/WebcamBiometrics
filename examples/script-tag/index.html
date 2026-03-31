@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>WebcamBiometrics from script tag</title>
+        <!-- CDN -->
+            <!-- <script src="https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.0/dist/webcam-biometrics.umd.js"></script>-->
+        <!-- Local from node_modules -->
+            <!--<script src="./node_modules/webcam-biometrics/dist/webcam-biometrics.umd.js"></script>-->
+        <!-- Dev (building from source) -->
+            <script src="../../dist/webcam-biometrics.umd.js"></script>
+        <script>
+
+        </script>
+    </head>
+    <body>
+        <video id="video" autoplay playsinline></video>
+        <script>
+            const client = new WebcamBiometrics.BiometricsClient('video', {
+                // workerUrl: 'https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.0/dist/worker.js' // live from CDN
+                // workerUrl: './node_modules/webcam-biometrics/dist/worker.js' // local from node_modules
+                workerUrl: '../../dist/worker.js' // Dev (building from source)
+            });
+            client.onResult = (result) => console.log(result);
+            client.start();
+        </script>
+    </body>
+</html>

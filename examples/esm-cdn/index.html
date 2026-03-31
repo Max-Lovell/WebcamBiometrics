@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<body>
+<video id="video" autoplay playsinline></video>
+<script type="module">
+    import { BiometricsClient } from 'https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.0/dist/webcam-biometrics.js';
+
+    const client = new BiometricsClient('video', {
+        workerUrl: new URL('webcam-biometrics/worker.js', import.meta.url).href
+    });
+    client.onResult = (result) => console.log(result);
+    client.start();
+</script>
+</body>
+</html>
