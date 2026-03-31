@@ -1,6 +1,6 @@
 {
   "name": "webcam-biometrics",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Real-time webcam biometrics: face landmarks, gaze tracking, and heart rate estimation",
   "author": "Max <max_lovell@hotmail.co.uk>",
   "homepage": "https://max-lovell.github.io/WebcamBiometrics/",
