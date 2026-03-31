@@ -20,7 +20,7 @@ to `tsconfig.json`
 ## Install the Webcam Biometrics Package
 Install the package from npm `npm install webcam-biometrics` or to install from a local build (after `npm run build`) using `npm install [PATH TO DIR]/webcam-biometrics-0.1.0.tgz`
 
-Then copy the worker file - no good fixes to avoid this with current Vite that don't cause their own issues (see git history):
+Then copy the worker file - no good fixes to avoid this with current Vite that don't cause their own issues ([1](https://github.com/vitejs/vite/discussions/15547), [2](https://github.com/vitejs/vite/discussions/1736)), and these problems interact with how MediaPipe handles importing modules in workers:
 ```
 cp node_modules/webcam-biometrics/dist/worker.js public/worker.js
 ```
