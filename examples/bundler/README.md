@@ -37,6 +37,14 @@ npm uninstall webcam-biometrics
 npm install ~/Code/WebcamBiometrics/webcam-biometrics-0.1.0.tgz
 ```
 
+## Note on inlining the worker for future dev work
+See `vite-plugin-inline-worker` in git history. Rollup screws with this line's import() statement somehow:
+`const module = await import(/* @vite-ignore */ url);`
+could be fixed with `new Function('url', 'return import(url)')` to hide the dynamic import() from Rollup's static analysis. 
+But seems like too many fragile, hacky, hard to debug (particularly as blob doesn't have sourcemaps) issues. Also increases bundle size, and may clash with Content Security Policy headers at unis.
+Looks like there's a fix for Vite late 7 or maybe 8 releasing soon: https://github.com/vitejs/vite/issues/11672#issuecomment-1415820673, https://github.com/vitejs/vite/blob/main/packages/vite/CHANGELOG.md
+
+
 
 
 
