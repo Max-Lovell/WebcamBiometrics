@@ -16,7 +16,7 @@ export function createWorker(workerUrl?: string): Worker {
 
     // Dev/demo mode — Vite handles .ts workers natively
     return new Worker(
-        new URL('./Worker.ts', import.meta.url),
+        new URL('./Worker.ts', import.meta.url), // or fallback to './worker.js' for others.
         { type: 'module' },
     );
 }

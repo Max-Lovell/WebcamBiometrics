@@ -8,29 +8,59 @@ Real-time webcam biometrics: face landmarks, gaze tracking, and heart rate estim
 npm install webcam-biometrics
 ```
 
+Copy the worker file to your project's public directory:
+
+```bash
+cp node_modules/webcam-biometrics/dist/worker.js public/
+```
+
 ```js
 import { BiometricsClient } from 'webcam-biometrics';
-const client = new BiometricsClient('webcam'); // where 'webcam' is the id of an HTML video element
-client.onResult = (result) => { console.log(result) }; // log result
-await client.start(); // start processing
+
+const client = new BiometricsClient('webcam', {
+    workerUrl: '/worker.js',
+});
+client.onResult = (result) => { console.log(result) };
+await client.start();
 ```
 
 The library handles everything internally — webcam access, face detection, gaze estimation, and heart rate extraction — and returns results via a callback on every processed frame. All heavy computation runs in a Web Worker so the main thread stays responsive.
+See note on the workerURL parameter in `examples/bundler/readme.md`
+### Script Tag Usage
+To use in your own (non-node) javascript page you can just run:
+```html
+<script src="https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.0/dist/webcam-biometrics.umd.js"></script>
+<script>
+    const client = new WebcamBiometrics.BiometricsClient('webcam', {
+        workerUrl: 'https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.0/dist/worker.js'
+    });
+    client.onResult = (result) => { console.log(result) };
+    client.start();
+</script>
+```
 
 ### Configuration
 
 ```js
 const client = new BiometricsClient('webcam', {
+    workerUrl: '/worker.js',
     pipeline: {
         gaze: { maxCalibPoints: 50, maxClickPoints: 5, clickTTL: 60000 },
         heart: {}, // or `false` to disable
         misc: true,
     },
+    assets: {
+        // Override default CDN URLs to self-host models
+        // wasmBasePath: '/wasm',
+        // faceLandmarkerModelPath: '/wasm/face_landmarker.task',
+        // gazeModelPath: '/models/model.json',
+    },
 });
 ```
 
-All pipeline stages are enabled by default. Set any stage to `false` to disable it. Asset URLs default to public CDNs (jsDelivr for the gaze model, Google Storage for MediaPipe) and fall back to local paths on `localhost`.
-Misc is currently a playground for new ideas - the irisDistance seems quite accurate on testing - idea from here: https://research.google/blog/mediapipe-iris-real-time-iris-tracking-depth-estimation/ with minor improvements. Consider using blendshapes for a FACS style emotion analysis.
+All pipeline stages are enabled by default. Set any stage to `false` to disable it. Asset URLs default to public CDNs (jsDelivr for the gaze model, Google Storage for MediaPipe). Consumers can override asset URLs via the `assets` config option to self-host models.
+
+Misc is currently a playground for new ideas — the irisDistance seems quite accurate on testing — idea from here: https://research.google/blog/mediapipe-iris-real-time-iris-tracking-depth-estimation/ with minor improvements. Consider using blendshapes for a FACS style emotion analysis.
 
 ### Gaze Calibration
 
@@ -75,47 +105,37 @@ npm install
 
 ## Build Architecture
 
-The library uses a Web Worker for all heavy computation. Distributing a worker in an npm package is tricky — `new URL('./Worker.ts', import.meta.url)` works in Vite but breaks in Webpack, Rollup, esbuild, and plain `<script>` tags. To make the library work everywhere with zero config, the worker is **inlined** into the main bundle at build time.
+The library uses a Web Worker for all heavy computation. The worker is shipped as a separate file (`dist/worker.js`) alongside the main bundle. Consumers provide the worker URL via config — the same pattern used by libraries like PDF.js and Monaco Editor.
+
+### Why `workerUrl`?
+
+Vite's library mode doesn't reliably handle `new URL('./worker.js', import.meta.url)` across the bundler boundary — the path gets resolved at build time and bakes in an absolute URL that breaks in the consumer's environment. Rather than relying on fragile bundler interop, the library lets consumers host the worker file however suits their setup and point to it explicitly.
 
 ### How it works
 
-There are three build modes, each handled differently:
+There are three build modes:
 
-**`npm run dev`** — Vite dev server. Vite detects `new URL('./Worker.ts', import.meta.url)` in `BiometricsClient.ts`, compiles the worker on the fly, and serves it as a separate module. Standard Vite behaviour, no plugins involved.
+**`npm run dev`** — Vite dev server. Vite detects `new URL('./Worker.ts', import.meta.url)` and serves the worker as a module on the fly. No `workerUrl` needed — the fallback path in `createWorker` handles this automatically.
 
-**`npm run build:demo`** — Static site build for GitHub Pages. Same as dev — Vite handles the worker natively, bundling it as a separate chunk. The demo is a normal Vite app, not a library.
+**`npm run build:demo`** — Static site build for GitHub Pages. Same as dev — Vite handles the worker natively, bundling it as a separate chunk.
 
-**`npm run build`** — Library build for npm. This is where the inlining happens:
-
-1. A custom Vite plugin (`vite-plugin-inline-worker.ts`) runs **before** the main build.
-2. It compiles `Worker.ts` into a self-contained ES bundle with all dependencies (MediaPipe, TensorFlow.js, etc.) bundled in. No externals.
-3. The compiled worker code is injected as a compile-time string constant (`__INLINE_WORKER__`) via Vite's `define`.
-4. In `BiometricsClient.ts`, `typeof __INLINE_WORKER__` is checked at the point of worker creation:
-    - **Library build:** The constant exists → worker is created from a Blob URL. No separate file needed.
-    - **Dev/demo:** The constant is undefined → falls back to the standard `new URL()` pattern that Vite handles natively.
-5. A small `drop-worker-chunk` plugin removes the redundant worker chunk that Vite emits from the `new URL()` pattern (it's dead code in the library build but Vite's static analysis still emits it).
-
-The result: consumers get a single JS file that creates the worker from an embedded string. Works with any bundler or none at all.
+**`npm run build`** — Library build for npm. The worker is compiled into a self-contained ES module (`dist/worker.js`) with all dependencies (MediaPipe, TensorFlow.js, pipeline logic) bundled in. The main library bundle (`dist/webcam-biometrics.js`) does not contain the worker code — consumers load it via the `workerUrl` config option.
 
 ### Model and WASM files
 
-The heavy binaries — MediaPipe WASM (~4 MB), the face landmarker model (~15 MB), and the BlazeGaze model (~1 MB) — are **not** bundled into the library. They are fetched at runtime from public CDNs via the URLs in `assetDefaults.ts`. The inlined worker only contains the JavaScript code (~1.8 MB minified) for MediaPipe, TensorFlow.js, and the pipeline logic.
+The heavy binaries — MediaPipe WASM (~4 MB), the face landmarker model (~15 MB), and the BlazeGaze model (~1 MB) — are **not** bundled into the library. They are fetched at runtime from public CDNs via the URLs in `assetDefaults.ts`. The worker file contains only the JavaScript code for MediaPipe, TensorFlow.js, and the pipeline logic.
 
-Consumers can override asset URLs via the `assets` config option if they want to self-host the models.
+Consumers can override asset URLs via the `assets` config option to self-host the models.
 
-### CSP Note
+### MediaPipe Compatibility
 
-The inlined worker uses a Blob URL. If the consuming page has a strict Content Security Policy, it must include `blob:` in its `worker-src` directive:
-
-```
-Content-Security-Policy: worker-src 'self' blob:;
-```
+MediaPipe's vision bundle has compatibility issues with module workers — it calls `self.import()` (which doesn't exist in module workers), references `document` (unavailable in workers), and has a strict-mode scoping bug. The worker includes three small shims at the top of `Worker.ts` to patch these. These are upstream MediaPipe bugs, not related to the build setup.
 
 ---
 
 ## Serving the Demo Locally
 
-The demo build is configured for GitHub Pages deployment with `base: '/webcam-biometrics/'`. To test locally after building:
+The demo build is configured for GitHub Pages deployment with `base: '/WebcamBiometrics/'`. To test locally after building:
 
 ```bash
 npm run build:demo
@@ -124,13 +144,9 @@ npx serve dist-demo
 
 Then visit `http://localhost:3000`.
 
-> **Note:** If the `base` setting is present in `vite.config.ts` for the demo build, assets will be prefixed with `/webcam-biometrics/`. Either remove the `base` line for local testing, or navigate to `http://localhost:3000/webcam-biometrics/`.
+> **Note:** If the `base` setting is present in `vite.config.ts` for the demo build, assets will be prefixed with `/WebcamBiometrics/`. Either remove the `base` line for local testing, or navigate to `http://localhost:3000/WebcamBiometrics/`.
 
 ---
-
-## License
-
-AGPL-3.0-or-later — see [LICENSE.txt](LICENSE.txt) for details.
 
 ## License
 
