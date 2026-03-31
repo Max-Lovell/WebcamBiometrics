@@ -3,26 +3,46 @@
     <head>
         <title>WebcamBiometrics from script tag</title>
         <!-- CDN -->
-             <script src="https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.0/dist/webcam-biometrics.umd.js"></script>
+             <script src="https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.1/dist/webcam-biometrics.umd.js"></script>
         <!-- Local from node_modules -->
             <!--<script src="./node_modules/webcam-biometrics/dist/webcam-biometrics.umd.js"></script>-->
         <!-- Dev (building from source) -->
-<!--            <script src="../../dist/webcam-biometrics.umd.js"></script>-->
-        <script>
-
-        </script>
+            <!--<script src="../../dist/webcam-biometrics.umd.js"></script>-->
+        <style>
+            #cursor {
+                position: fixed;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                transform: translate(-50%, -50%);
+            }
+        </style>
     </head>
     <body>
+        <div id="cursor"></div>
         <video id="video" autoplay playsinline></video>
         <script>
             // cd examples/script-tag
             // npx serve
             const client = new WebcamBiometrics.BiometricsClient('video', {
-                workerUrl: 'https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.0/dist/worker.js' // live from CDN
+                workerUrl: 'https://cdn.jsdelivr.net/npm/webcam-biometrics@0.1.1/dist/worker.js' // live from CDN
                 // workerUrl: './node_modules/webcam-biometrics/dist/worker.js' // local from node_modules
                 // workerUrl: '../../dist/worker.js' // Dev (building from source)
             });
-            client.onResult = (result) => console.log(result);
+            const cursor = document.getElementById('cursor');
+            client.onResult = (result) => {
+                console.log(result);
+                const trace = result.frameMetadata.trace
+                console.log('frame time: ', (trace[trace.length - 1].timestamp - trace[0].timestamp).toFixed(1));
+                const normPog = result.gaze?.normPog;
+                if (normPog && cursor) {
+                    const vw = document.documentElement.clientWidth || window.innerWidth;
+                    const vh = document.documentElement.clientHeight || window.innerHeight;
+                    cursor.style.left = `${(normPog[0] + 0.5) * vw}px`;
+                    cursor.style.top = `${(normPog[1] + 0.5) * vh}px`;
+                    cursor.style.backgroundColor = result.gaze.gazeState === 'closed' ? 'gray' : 'purple';
+                }
+            };
             client.start();
         </script>
     </body>

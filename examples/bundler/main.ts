@@ -14,8 +14,9 @@ const client = new BiometricsClient('webcam', {
 const cursor = document.getElementById('cursor');
 client.onResult = (result) => {
     console.log(result);
-
-    //
+    const trace = result.frameMetadata.trace
+    // @ts-ignore
+    console.log('frame time: ', (trace[trace.length - 1].timestamp - trace[0].timestamp).toFixed(2));
     const normPog = result.gaze?.normPog;
     if (normPog && cursor) {
         const vw = document.documentElement.clientWidth || window.innerWidth;
@@ -24,7 +25,5 @@ client.onResult = (result) => {
         cursor.style.top = `${(normPog[1] + 0.5) * vh}px`;
         cursor.style.backgroundColor = result.gaze!.gazeState === 'closed' ? 'gray' : 'purple';
     }
-
-
 };
 await client.start();
