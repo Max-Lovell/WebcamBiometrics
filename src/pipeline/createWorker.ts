@@ -4,6 +4,15 @@ declare const __LIB_BUILD__: boolean;
 
 export function createWorker(workerUrl?: string): Worker {
     if (workerUrl) {
+        // Cross-origin workers must be proxied through a blob
+        if (workerUrl.startsWith('http') && typeof location !== 'undefined'
+            && !workerUrl.startsWith(location.origin)) {
+            const blob = new Blob(
+                [`import "${workerUrl}"`],
+                { type: 'application/javascript' }
+            );
+            return new Worker(URL.createObjectURL(blob), { type: 'module' });
+        }
         return new Worker(workerUrl, { type: 'module' });
     }
 
