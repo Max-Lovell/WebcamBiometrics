@@ -21,15 +21,17 @@
         "default": "./dist/webcam-biometrics.cjs"
       }
     },
+    "./worker": {
+      "default": "./dist/worker.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist/webcam-biometrics.*",
-    "!dist/*.map",
+    "!dist/webcam-biometrics.*.map",
+    "dist/worker.js",
     "dist/types",
-    "models",
-    "README.md",
-    "LICENSE"
+    "models"
   ],
   "keywords": [
     "webcam",

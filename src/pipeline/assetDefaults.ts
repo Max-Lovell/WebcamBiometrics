@@ -15,7 +15,7 @@ export interface AssetConfig {
 declare const __PACKAGE_VERSION__: string;
 
 // CDN defaults for published package
-const CDN_DEFAULTS: Required<AssetConfig> = {
+const DEFAULTS: Required<AssetConfig> = {
     wasmBasePath: `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm`, // update version here
     // https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker#models
     faceLandmarkerModelPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
@@ -23,33 +23,20 @@ const CDN_DEFAULTS: Required<AssetConfig> = {
 };
 
 // Local dev defaults - Vite serves from public/ at root
-const LOCAL_DEFAULTS: Required<AssetConfig> = {
-    wasmBasePath: '/wasm',
-    faceLandmarkerModelPath: '/wasm/face_landmarker.task',
-    gazeModelPath: '/models/model.json',
-};
-
-// Resolver ---------
-// Detect local dev server on main thread so location available
-function isLocalDev(): boolean {
-    try {
-        const host = globalThis?.location?.hostname;
-        return host === 'localhost' || host === '127.0.0.1';
-    } catch {
-        return false;
-    }
-}
+// const LOCAL_DEFAULTS: Required<AssetConfig> = {
+//     wasmBasePath: '/wasm',
+//     faceLandmarkerModelPath: '/wasm/face_landmarker.task',
+//     gazeModelPath: '/models/model.json',
+// };
 
 // Merge user overrides with defaults. CDN URL when published, fallback to local on localhost
 export function resolveAssets(overrides?: AssetConfig): Required<AssetConfig> {
-    const defaults = isLocalDev() ? LOCAL_DEFAULTS : CDN_DEFAULTS;
-
     return {
-        wasmBasePath:            overrides?.wasmBasePath            ?? defaults.wasmBasePath,
-        faceLandmarkerModelPath: overrides?.faceLandmarkerModelPath ?? defaults.faceLandmarkerModelPath,
-        gazeModelPath:           overrides?.gazeModelPath           ?? defaults.gazeModelPath,
+        wasmBasePath:            overrides?.wasmBasePath            ?? DEFAULTS.wasmBasePath,
+        faceLandmarkerModelPath: overrides?.faceLandmarkerModelPath ?? DEFAULTS.faceLandmarkerModelPath,
+        gazeModelPath:           overrides?.gazeModelPath           ?? DEFAULTS.gazeModelPath,
     };
 }
 
 // Export CDN defaults for power users who want to inspect or reference them
-export const ASSET_DEFAULTS = CDN_DEFAULTS;
+export const ASSET_DEFAULTS = DEFAULTS;

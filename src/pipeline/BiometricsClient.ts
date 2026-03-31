@@ -38,6 +38,7 @@ export interface BiometricsClientConfig {
         misc?: boolean;
     };
     assets?: AssetConfig; // Optional override URLs for model and WASM assets - CDN defaults
+    workerUrl?: string;  // For script-tag users
 }
 
 // ─── Client ─────────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ export class BiometricsClient {
         // Spin up worker
         // Library build: vite-plugin-inline-worker replaces this block with Blob-based creation
         // Dev/demo build: markers are ignored, Vite handles the worker natively via URL
-        this.worker = createWorker();
+        this.worker = createWorker(config?.workerUrl);
 
         // Wire up message handler
         this.messageHandler = (e: MessageEvent) => this.handleWorkerMessage(e); // For receiving messages back

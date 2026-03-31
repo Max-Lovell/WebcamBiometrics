@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import pkg from './package.json' with { type: 'json' };
-import { inlineWorkerPlugin } from './vite-plugin-inline-worker';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -57,14 +56,12 @@ export default defineConfig(({ mode }) => {
 
     // Library build (npm run build)
     // Produces the NPM package in dist/.
-    // The inlineWorkerPlugin pre-builds Worker.ts into a self-contained string,
-    // so the published library has no separate worker file to serve.
     return {
         ...shared,
-        plugins: [ inlineWorkerPlugin() ],
+        publicDir: false,
         build: {
             lib: {
-                entry: path.resolve(__dirname, 'src/index.ts'),
+                entry: 'src/index.ts',
                 name: 'WebcamBiometrics',
                 formats: ['es', 'cjs', 'umd'],
                 fileName: (format) => {
@@ -74,7 +71,24 @@ export default defineConfig(({ mode }) => {
                 },
             },
             outDir: 'dist',
-            sourcemap: true
+            sourcemap: true,
+            rollupOptions: {          // Move inside build
+                output: {
+                    chunkFileNames: '[name].js',
+                },
+            },
+        },
+        worker: {
+            format: 'es',
+            rollupOptions: {
+                output: {
+                    entryFileNames: 'worker.js',
+                },
+            },
+        },
+        define: {
+            __PACKAGE_VERSION__: JSON.stringify(pkg.version),
+            __LIB_BUILD__: 'true',
         },
     }
 })
