@@ -116,26 +116,88 @@ window.addEventListener('keydown', (e) => {
         target.style.display = 'block';
     }
 });
-// ─── Client setup ───────────────────────────────────────────────────────────
-const client = new BiometricsClient('webcam', {
-    assets: {
-        // Note here: consider these local files for dev mode...)
-        // wasmBasePath: import.meta.env.BASE_URL + 'wasm',
-        // faceLandmarkerModelPath: import.meta.env.BASE_URL + 'wasm/face_landmarker.task',
-        wasmBasePath: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm",
-        faceLandmarkerModelPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-        gazeModelPath: import.meta.env.BASE_URL + 'models/model.json',
+
+// ─── Toggle state ───────────────────────────────────────────────────────────
+const toggleGaze = document.getElementById('toggleGaze') as HTMLInputElement;
+const toggleHeart = document.getElementById('toggleHeart') as HTMLInputElement;
+
+let client: BiometricsClient | null = null;
+let restarting = false;
+
+const assets = {
+    wasmBasePath: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm",
+    faceLandmarkerModelPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    gazeModelPath: import.meta.env.BASE_URL + 'models/model.json',
+};
+
+function createClient(): BiometricsClient {
+    const c = new BiometricsClient('webcam', {
+        pipeline: {
+            gaze: toggleGaze.checked ? undefined : false,
+            heart: toggleHeart.checked ? undefined : false,
+        },
+        assets,
+    });
+
+    c.onResult = (result) => {
+        result?.frameMetadata?.trace?.push({ step: 'frame_received', timestamp: performance.now() });
+        showResults(result);
+    };
+
+    c.onWebcamStatus = (status, msg) => {
+        console.log(`Webcam: ${status}`, msg);
+    };
+
+    return c;
+}
+
+function clearDisabledUI(): void {
+    if (!toggleGaze.checked) {
+        cursor.style.left = '-100px';
+        cursor.style.top = '-100px';
+        accuracyText.innerText = '';
+        eyePatchCtx?.clearRect(0, 0, eyePatchCanvas.width, eyePatchCanvas.height);
     }
-});
+    if (!toggleHeart.checked) {
+        bpmDisplay.innerText = '';
+        displayedFFT = '';
+        displayedPeak = '';
+        webcamOverlayCtx.clearRect(0, 0, webcamOverlayCanvas.width, webcamOverlayCanvas.height);
+        const pulseGraphCtx = pulseGraphCanvas?.getContext('2d')
+        pulseGraphCtx?.clearRect(0, 0, pulseGraphCanvas.width, pulseGraphCanvas.height);
+        pulseGraphCanvas.style.display = 'none';
+    } else {
+        pulseGraphCanvas.style.display = 'inline';
+    }
+}
 
-client.onResult = (result) => {
-    result?.frameMetadata?.trace?.push({ step: 'frame_received', timestamp: performance.now() });
-    showResults(result);
-};
+async function restart(): Promise<void> {
+    if (restarting) return;
+    restarting = true;
 
-client.onWebcamStatus = (status, msg) => {
-    console.log(`Webcam: ${status}`, msg);
-};
+    try {
+        if (client) {
+            client.dispose();
+            client = null;
+        }
+
+        clearDisabledUI();
+
+        client = createClient();
+        await client.start();
+        console.log('Restarted with gaze=' + toggleGaze.checked + ' heart=' + toggleHeart.checked);
+    } catch (error) {
+        console.error('Restart failed:', error);
+    } finally {
+        restarting = false;
+    }
+}
+
+toggleGaze.addEventListener('change', () => restart());
+toggleHeart.addEventListener('change', () => restart());
+
+// ─── Initial start ─────────────────────────────────────────────────────────
+client = createClient();
 
 try {
     // Attempt the frictionless auto-start
@@ -151,7 +213,7 @@ try {
     startButton.addEventListener('click', async () => {
         startButton.style.display = 'none'; // Hide button immediately on click
         try {
-            await client.start();
+            await client!.start();
             console.log("Manual start successful!");
         } catch (manualError) {
             console.error("Camera access denied after click:", manualError);
