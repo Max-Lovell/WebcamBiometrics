@@ -32,7 +32,7 @@ export async function createDefaultPipeline(
     // Default to true if not explicitly disabled
     const useGaze = config.gaze !== false;
     const useHeartRate = config.heart !== false;
-    const useMisc = config.misc !== false; // or `=== true` for opt-in
+    const useMisc = false; //config.misc !== false; // or `=== true` for opt-in
 
     // const stages = [face, gaze, heart].filter(s => s.initialize);
     // await Promise.all(stages.map(s => s.initialize!()));
