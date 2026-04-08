@@ -11,14 +11,13 @@ export class MiscProcessor {
         const dims = getFrameDimensions(frame)
         const irisDist = irisDistance(landmarks, dims.width, dims.height)
         // TODO: blink, eyePatch, calibration, camera intrinsics
-        irisUnitGaze(face.faceLandmarkerResult, dims.width, dims.height)
+        const gaze = irisUnitGaze(face.faceLandmarkerResult, dims.width, dims.height)
 
         return {
             distance: irisDist,
+            gaze: gaze
         };
     }
-
-
 
     dispose(): void {
         // clean up if needed
