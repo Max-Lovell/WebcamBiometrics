@@ -46,6 +46,7 @@ function syncWebcamCanvas(): void {
 // ─── Results callback ───────────────────────────────────────────────────────
 const showResults = (result: BiometricsResult) => {
     if (!result.face?.detected) return;
+    if (paused) return;
 
     if(result.frameMetadata?.trace){
         traceDisplay.update(result.frameMetadata?.trace);
@@ -222,3 +223,22 @@ try {
         }
     });
 }
+
+const pauseButton = document.getElementById('pauseButton') as HTMLButtonElement;
+let paused = false;
+
+function setPaused(p: boolean): void {
+    paused = p;
+    pauseButton.innerText = paused ? 'Resume' : 'Pause';
+    if(paused){
+        video.pause()
+    } else {
+        video.play()
+    }
+}
+
+pauseButton.addEventListener('click', () => setPaused(!paused));
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'P') setPaused(!paused);
+});
