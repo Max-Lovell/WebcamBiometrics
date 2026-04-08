@@ -4,10 +4,12 @@ import { drawPulseMask } from "./drawing/drawPulseMask";
 import { PulseGraph } from './drawing/PulseGraph';
 import { AccuracyTracker } from './drawing/AccuracyTracker';
 import { TraceDisplay } from './drawing/TraceDisplay';
+import { drawGazeDebug } from './drawing/drawGazeDebug';
 
 // ─── Pulse Graph ────────────────────────────────────────────────────────────
 const cursor = document.getElementById('cursor') as HTMLDivElement;
 const video = document.getElementById('webcam') as HTMLVideoElement;
+const cursor2 = document.getElementById('cursor2') as HTMLCanvasElement;
 
 const pulseGraphCanvas = document.getElementById('heartRate') as HTMLCanvasElement;
 const pulseGraph = new PulseGraph(pulseGraphCanvas);
@@ -98,6 +100,39 @@ const showResults = (result: BiometricsResult) => {
 
         const text = `BPM ${displayedFFT}${displayedPeak}`;
         if (bpmDisplay.innerText !== text) bpmDisplay.innerText = text;
+    }
+
+    // GAZE -----------********
+    const irisGaze = result.misc?.gaze;
+    // console.log(irisGaze);
+    const landmarks = result.face?.faceLandmarkerResult?.faceLandmarks?.[0] ?? null;
+    if (irisGaze) {
+        const fw = webcamOverlayCanvas.width;
+        const fh = webcamOverlayCanvas.height;
+        const fx = irisGaze.fx ?? Math.max(fw, fh);
+        drawGazeDebug(irisGaze, landmarks, webcamOverlayCtx, fw, fh, fx, {
+            showLandmarks: true,
+            showEyeballCenters: true,
+            showGazeRays: true,
+            showReadout: true,
+        });
+    }
+    const SCREEN_W_CM = 40;
+    const SCREEN_H_CM = 12;
+
+    const screenPog = result.misc?.gaze?.screenPog;
+    if (screenPog) {
+        // Camera at top-center of screen. Screen spans x ∈ [-W/2, W/2], y ∈ [-H, 0].
+        const normX = -screenPog.x / SCREEN_W_CM;              // -0.5 .. 0.5
+        const normY = -screenPog.y / SCREEN_H_CM;       // -0.5 .. 0.5 (top to bottom)
+
+        const vw = document.documentElement.clientWidth || window.innerWidth;
+        const vh = document.documentElement.clientHeight || window.innerHeight;
+        cursor2.style.left = `${(normX + 0.5) * vw}px`;
+        cursor2.style.top = `${(normY + 0.5) * vh}px`;
+        cursor2.style.backgroundColor = result.gaze!.gazeState === 'closed' ? 'gray' : 'green';
+    } else {
+        cursor2.style.display = 'none';
     }
 };
 
