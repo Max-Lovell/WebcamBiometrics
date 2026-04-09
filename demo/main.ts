@@ -5,6 +5,8 @@ import { PulseGraph } from './drawing/PulseGraph';
 import { AccuracyTracker } from './drawing/AccuracyTracker';
 import { TraceDisplay } from './drawing/TraceDisplay';
 import { drawGazeDebug } from './drawing/drawGazeDebug';
+import { drawDebugPixel } from './drawing/drawDebugPixel';
+import { drawHeadAxes } from './drawing/drawHeadAxes';
 
 // ─── Pulse Graph ────────────────────────────────────────────────────────────
 const cursor = document.getElementById('cursor') as HTMLDivElement;
@@ -106,20 +108,9 @@ const showResults = (result: BiometricsResult) => {
     const irisGaze = result.misc?.gaze;
     // console.log(irisGaze);
     const landmarks = result.face?.faceLandmarkerResult?.faceLandmarks?.[0] ?? null;
-    if (irisGaze) {
-        const fw = webcamOverlayCanvas.width;
-        const fh = webcamOverlayCanvas.height;
-        const fx = irisGaze.fx ?? Math.max(fw, fh);
-        drawGazeDebug(irisGaze, landmarks, webcamOverlayCtx, fw, fh, fx, {
-            showLandmarks: true,
-            showEyeballCenters: true,
-            showGazeRays: true,
-            showReadout: true,
-        });
-    }
-    const SCREEN_W_CM = 40;
-    const SCREEN_H_CM = 12;
 
+    const SCREEN_W_CM = 50;
+    const SCREEN_H_CM = 20;
     const screenPog = result.misc?.gaze?.screenPog;
     if (screenPog) {
         // Camera at top-center of screen. Screen spans x ∈ [-W/2, W/2], y ∈ [-H, 0].
@@ -134,6 +125,35 @@ const showResults = (result: BiometricsResult) => {
     } else {
         cursor2.style.display = 'none';
     }
+
+    if (irisGaze?.debug) {
+        if (irisGaze.debug.headAxes) {
+            drawHeadAxes(webcamOverlayCtx, irisGaze.debug.headAxes);
+        }
+        if (irisGaze.debug.canonicalPupilLeft) {
+            drawDebugPixel(webcamOverlayCtx,
+                irisGaze.debug.canonicalPupilLeft.x,
+                irisGaze.debug.canonicalPupilLeft.y,
+                { color: 'lime', label: 'L' });
+        }
+        if (irisGaze.debug.canonicalPupilRight) {
+            drawDebugPixel(webcamOverlayCtx,
+                irisGaze.debug.canonicalPupilRight.x,
+                irisGaze.debug.canonicalPupilRight.y,
+                { color: 'blue', label: 'R' });
+        }
+    }
+    // if (irisGaze) {
+    //     const fw = webcamOverlayCanvas.width;
+    //     const fh = webcamOverlayCanvas.height;
+    //     const fx = irisGaze.fx ?? Math.max(fw, fh);
+    //     drawGazeDebug(irisGaze, landmarks, webcamOverlayCtx, fw, fh, fx, {
+    //         showLandmarks: true,
+    //         showEyeballCenters: true,
+    //         showGazeRays: true,
+    //         showReadout: true,
+    //     });
+    // }
 };
 
 // ─── Accuracy tracker ───────────────────────────────────────────────────────
@@ -276,4 +296,5 @@ pauseButton.addEventListener('click', () => setPaused(!paused));
 
 window.addEventListener('keydown', (e) => {
     if (e.key === ' ' || e.key === 'P') setPaused(!paused);
+    e.preventDefault();
 });

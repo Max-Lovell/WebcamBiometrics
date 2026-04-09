@@ -23,16 +23,15 @@ export function drawDebugPixel(
         label?: string;
     } = {},
 ): void {
-    const { color = 'lime', radius = 6, label } = options;
+    const { color = 'lime', label } = options;
 
     ctx.save();
     // Outline so it's visible against any background.
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
     ctx.fillStyle = color;
 
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillRect( x, y, 1, 1 );
     ctx.fill();
     ctx.stroke();
 
@@ -41,8 +40,8 @@ export function drawDebugPixel(
         ctx.fillStyle = 'white';
         ctx.strokeStyle = 'black';
         ctx.lineWidth = 3;
-        ctx.strokeText(label, x + radius + 4, y - radius);
-        ctx.fillText(label, x + radius + 4, y - radius);
+        ctx.strokeText(label, x + 6 + 4, y - 6);
+        ctx.fillText(label, x + 6 + 4, y - 6);
     }
     ctx.restore();
 }
