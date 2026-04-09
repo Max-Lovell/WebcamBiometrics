@@ -67,38 +67,43 @@ export function projectCanonicalToCanvas(
 export function getEyeballCenterFromCanonical(
     irisIndex: number,
     transformationMatrix: number[],
-    fx: number, // cameraFX
-    z: number,
+    pupilDepth: number,
 ): Coordinate3D {
     const R = 1.175;
-    const irisVertex = CANONICAL_VERTICES[irisIndex];
-    // Project the canonical iris center to a stable pupil pixel.
-    const centered = projectCanonicalLandmark(irisVertex, transformationMatrix);
-
-    // lift that pixel to 3D at the iris depth
-    const pupilX = (centered.x / centered.z) * z;
-    const pupilY = (centered.y / centered.z) * z;
-    const pupilZ = z;
-
-    // Walk back along the head's forward axis in camera space by R.
-    // Column 2 of the rotation = model +Z expressed in camera space = "out of face".
-    // In MediaPipe's -Z camera, out-of-face points toward the camera, so "into the head" is the opposite direction.
+    const iris = CANONICAL_VERTICES[irisIndex];
     const m = transformationMatrix;
-    const outX = m[8];
-    const outY = m[9];
-    const outZ = m[10];
-    const len = Math.sqrt(outX*outX + outY*outY + outZ*outZ) || 1;
 
-    // Into-head direction in -Z camera space: negate the out-of-face vector.
-    // Then convert to your +Z-away convention: negate z component.
-    const intoHeadX = -outX / len;
-    const intoHeadY = -outY / len;
-    const intoHeadZ =  outZ / len; // sign flip for +Z-away
+    // 1. Transform canonical iris vertex to MP camera space.
+    const irisCamX = m[0]*iris.x + m[4]*iris.y + m[8]*iris.z  + m[12];
+    const irisCamY = m[1]*iris.x + m[5]*iris.y + m[9]*iris.z  + m[13];
+    const irisCamZ = m[2]*iris.x + m[6]*iris.y + m[10]*iris.z + m[14];
+
+    // 2. Head-forward axis in MP camera space = rotation column 2 (model +Z,
+    //    points out of the face). Already unit length since it's a rotation column.
+    const fwdX = m[8];
+    const fwdY = m[9];
+    const fwdZ = m[10];
+
+    // 3. Walk back into the head by R along -forward.
+    const eyeCamX = irisCamX - fwdX * R;
+    const eyeCamY = irisCamY - fwdY * R;
+    const eyeCamZ = irisCamZ - fwdZ * R;
+
+    // 4. Convert to your +Z-away convention. MP has -Z forward, so depth = -camZ.
+    //    Also +Y is up in both, so y is unchanged.
+    const mpEyeDepth = -eyeCamZ;
+
+    // 5. Rescale uniformly along the camera ray so the eyeball center sits at the
+    //    depth implied by your iris-diameter measurement. The pupil is at pupilDepth;
+    //    the eyeball center is R behind it along head-forward, which projects to a
+    //    depth difference of R * |fwdZ| along the camera z-axis.
+    const targetDepth = pupilDepth + R * Math.abs(fwdZ);
+    const scale = targetDepth / mpEyeDepth;
 
     return {
-        x: pupilX + intoHeadX * R,
-        y: pupilY + intoHeadY * R,
-        z: pupilZ + intoHeadZ * R,
+        x: eyeCamX * scale,
+        y: eyeCamY * scale,
+        z: targetDepth,
     };
 }
 
