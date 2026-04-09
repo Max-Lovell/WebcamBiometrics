@@ -44,6 +44,7 @@ interface IrisGazeOutput {
     cyclopean: GazeInfo
     screenPog: Point | null;  // cm in screen plane, null if ray misses
     fx: number;
+    debug?: any;
 }
 
 // ----------------
