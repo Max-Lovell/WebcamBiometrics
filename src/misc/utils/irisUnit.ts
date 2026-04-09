@@ -97,7 +97,7 @@ export function irisUnitGaze (
     // };
 
     // Extract facelandmarker
-    // const facialTransformationMatrix: number[] = faceLandmarkerResult.facialTransformationMatrixes[0].data
+    const facialTransformationMatrix: number[] = faceLandmarkerResult.facialTransformationMatrixes[0].data
     const faceLandmarks: NormalizedLandmark[] = faceLandmarkerResult.faceLandmarks[0]
     // Fall back to a rough focal length estimate if none provided
     const fx = focalLengthPx ?? Math.max(frameWidth, frameHeight);
