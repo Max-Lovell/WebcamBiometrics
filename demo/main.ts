@@ -61,7 +61,7 @@ const showResults = (result: BiometricsResult) => {
         const vh = document.documentElement.clientHeight || window.innerHeight;
         cursor.style.left = `${(normPog[0] + 0.5) * vw}px`;
         cursor.style.top = `${(normPog[1] + 0.5) * vh}px`;
-        cursor.style.backgroundColor = result.gaze!.gazeState === 'closed' ? 'gray' : 'purple';
+        cursor.style.backgroundColor = result.gaze?.gazeState === 'closed' ? 'gray' : 'purple';
     }
 
     if (normPog && result.gaze?.gazeState === 'open') {
@@ -130,7 +130,7 @@ const showResults = (result: BiometricsResult) => {
         const vh = document.documentElement.clientHeight || window.innerHeight;
         cursor2.style.left = `${(normX + 0.5) * vw}px`;
         cursor2.style.top = `${(normY + 0.5) * vh}px`;
-        cursor2.style.backgroundColor = result.gaze!.gazeState === 'closed' ? 'gray' : 'green';
+        cursor2.style.backgroundColor = result.gaze?.gazeState === 'closed' ? 'gray' : 'green';
     } else {
         cursor2.style.display = 'none';
     }
