@@ -101,6 +101,7 @@ export function irisUnitGaze (
     const faceLandmarks: NormalizedLandmark[] = faceLandmarkerResult.faceLandmarks[0]
     // Fall back to a rough focal length estimate if none provided
     const fx = focalLengthPx ?? Math.max(frameWidth, frameHeight);
+    const fxFacelandmarker = (frameHeight / 2) / Math.tan((63 / 2) * Math.PI / 180);
 
     // Left eye
     const leftPupilZ = irisDepth(faceLandmarks, 'left', frameWidth, frameHeight, fx)
