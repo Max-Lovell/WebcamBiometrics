@@ -1,5 +1,6 @@
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import type {Point} from "../../types.ts";
+import {getEyeballCenterFromCanonical, projectCanonicalToCanvas} from "./projectCanonicalFacemesh.ts";
 
 // -------------
 interface IrisLandmarks {
@@ -108,6 +109,7 @@ export function irisUnitGaze (
     const leftPupil = faceLandmarks[eyeLandmarks['left'].pupil]
     const leftPupilXY = landmark2Metric(leftPupil.x, leftPupil.y, frameWidth, frameHeight, fx, leftPupilZ)
     const leftEyeballCenter = getEyeballCenter(faceLandmarks, 'left', frameWidth, frameHeight, fx, leftPupilZ)
+    // const leftEyeballCenter = getEyeballCenterFromCanonical(eyeLandmarks['left'].pupil, facialTransformationMatrix, leftPupilZ)
     const leftGazeCartesian = gazeCartesian(leftEyeballCenter, {...leftPupilXY, z: leftPupilZ});
 
     // Right eye
@@ -115,6 +117,7 @@ export function irisUnitGaze (
     const rightPupil = faceLandmarks[eyeLandmarks['right'].pupil]
     const rightPupilXY = landmark2Metric(rightPupil.x, rightPupil.y, frameWidth, frameHeight, fx, rightPupilZ)
     const rightEyeballCenter = getEyeballCenter(faceLandmarks, 'right', frameWidth, frameHeight, fx, rightPupilZ)
+    // const rightEyeballCenter = getEyeballCenterFromCanonical(eyeLandmarks['right'].pupil, facialTransformationMatrix, rightPupilZ)
     const rightGazeCartesian = gazeCartesian(rightEyeballCenter, {...rightPupilXY, z: rightPupilZ});
 
     // Cyclopean
@@ -128,8 +131,14 @@ export function irisUnitGaze (
     const cyclopeanOrigin: Coordinate3D = { ...cyclopeanEyeOrigin, z: averageIrisDepth };
     const screenPog = intersectScreenPlane(cyclopeanOrigin, cyclopeanGaze);
 
+    const debug = {
+        // canonicalPupilLeft: metric2Pixel(leftEyeballCenter, frameWidth, frameHeight, fx),
+        // canonicalPupilRight: metric2Pixel(rightEyeballCenter, frameWidth, frameHeight, fx)
+        // canonicalPupilLeft: projectCanonicalToCanvas(eyeLandmarks.left.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight),
+        // canonicalPupilRight: projectCanonicalToCanvas(eyeLandmarks.right.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight),
+    };
+
     // TODO: calculating point of gaze with intersection of two gaze vectors might be better here
-    // console.log(averageIrisDepth)
     return {
         left: {
             origin: leftEyeballCenter,
@@ -147,7 +156,8 @@ export function irisUnitGaze (
             pixel: denormaliseLandmark(cyclopeanEyePixel, frameWidth, frameHeight)
         },
         screenPog,
-        fx
+        fx,
+        debug
     };
 }
 
