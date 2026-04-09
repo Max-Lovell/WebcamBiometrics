@@ -26,7 +26,7 @@ interface EyeLandmarks {
 }
 
 // -------------
-interface Coordinate3D {
+export interface Coordinate3D {
     x: number;
     y: number;
     z: number;
