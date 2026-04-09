@@ -161,20 +161,6 @@ export function irisUnitGaze (
     };
 }
 
-export function metric2Pixel(
-    p: Coordinate3D,
-    frameWidth: number,
-    frameHeight: number,
-    fx: number,
-): Point {
-    const pixelX = (p.x / p.z) * fx;
-    const pixelY = (p.y / p.z) * fx;
-    return {
-        x: pixelX + frameWidth / 2,
-        y: -pixelY + frameHeight / 2,
-    };
-}
-
 function intersectScreenPlane(
     origin: Coordinate3D,
     gaze: Coordinate3D,
@@ -311,3 +297,28 @@ function landmark2Metric(
     }
 }
 
+export function metric2Pixel(
+    p: Coordinate3D,
+    frameWidth: number,
+    frameHeight: number,
+    fx: number,
+): Point {
+    const pixelX = (p.x / p.z) * fx;
+    const pixelY = (p.y / p.z) * fx;
+    return {
+        x: pixelX + frameWidth / 2,
+        y: -pixelY + frameHeight / 2,
+    };
+}
+
+function pixel2metric(
+    x: number,
+    y: number,
+    fx: number,
+    z: number
+): Point {
+    return {
+        x: (x / fx) * z,
+        y: (y / fx) * z,
+    }
+}
