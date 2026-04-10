@@ -314,11 +314,13 @@ export function metric2Pixel(
 function pixel2metric(
     x: number,
     y: number,
+    frameWidth: number,
+    frameHeight: number,
     fx: number,
     z: number
 ): Point {
     return {
-        x: (x / fx) * z,
-        y: (y / fx) * z,
+        x: ((x-(frameWidth/2)) / fx) * z,
+        y: ((-y+(frameHeight/2)) / fx) * z,
     }
 }
