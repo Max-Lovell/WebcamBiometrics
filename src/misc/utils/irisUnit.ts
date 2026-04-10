@@ -258,6 +258,8 @@ export function getCanonicalEyeballCenter(
     const CANONICAL_VERTICES = {
         left: {x: 3.181751, y: 2.635786, z: 3.826339}, // 473
         right: {x: -3.18175, y: 2.635786, z: 3.826339} // 468
+    const EYEBALL_AXIAL_RADIUS = .1175
+    const CANONICAL_VERTICES = { // TODO: Note consider just subtracting radius here - but what are the units??
     }
     const v = CANONICAL_VERTICES[side]
     const m = transformationMatrix;
