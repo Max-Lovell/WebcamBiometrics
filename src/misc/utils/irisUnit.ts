@@ -1,6 +1,5 @@
 import type {FaceLandmarkerResult, NormalizedLandmark} from "@mediapipe/tasks-vision";
 import type {Point} from "../../types.ts";
-import {getEyeballCenterFromCanonical, projectCanonicalToCanvas} from "./projectCanonicalFacemesh.ts";
 
 // -------------
 interface IrisLandmarks {
@@ -108,29 +107,19 @@ export function irisUnitGaze (
     const leftPupilZ = irisDepth(faceLandmarks, 'left', frameWidth, frameHeight, fx)
     const leftPupil = faceLandmarks[eyeLandmarks['left'].pupil]
     const leftPupilXY = landmark2Metric(leftPupil.x, leftPupil.y, frameWidth, frameHeight, fx, leftPupilZ)
-    // const leftEyeballCenter = getEyeballCenterFromCanonical(eyeLandmarks['left'].pupil, facialTransformationMatrix, leftPupilZ)
 
-    const leftEyeballCenterPixel = projectCanonicalToCanvas(eyeLandmarks.left.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight)
-    const leftEyeballCenter = pixel2metric(leftEyeballCenterPixel.x, leftEyeballCenterPixel.y, frameWidth, frameHeight, fx, leftPupilZ)
-    const leftGazeCartesian = gazeCartesian({...leftEyeballCenter, z:leftPupilZ+1.175}, {...leftPupilXY, z:leftPupilZ});
+    const leftEyeballCenter = getEyeballCenter(faceLandmarks, 'left', frameWidth, frameHeight, fx, leftPupilZ)
+    // const leftEyeballCenter = getCanonicalEyeballCenter('left',facialTransformationMatrix,fx,fxFacelandmarker,frameWidth,frameHeight,leftPupilZ)
+    const leftGazeCartesian = gazeCartesian(leftEyeballCenter, {...leftPupilXY, z:leftPupilZ});
 
-    // const leftEyeballCenter = getEyeballCenter(faceLandmarks, 'left', frameWidth, frameHeight, fx, leftPupilZ)
-    // const leftGazeCartesian = gazeCartesian(leftEyeballCenter, {...leftPupilXY, z: leftPupilZ});
-
-    // console.log(metric2Pixel({...leftPupilXY, z: leftPupilZ}, frameWidth, frameHeight, fx), leftEyeballCenterPixel)
-    // console.log(leftPupilXY, leftEyeballCenter)
     // Right eye
     const rightPupilZ = irisDepth(faceLandmarks, 'right', frameWidth, frameHeight, fx)
     const rightPupil = faceLandmarks[eyeLandmarks['right'].pupil]
     const rightPupilXY = landmark2Metric(rightPupil.x, rightPupil.y, frameWidth, frameHeight, fx, rightPupilZ)
-    // const rightEyeballCenter = getEyeballCenterFromCanonical(eyeLandmarks['right'].pupil, facialTransformationMatrix, rightPupilZ)
 
-    const rightEyeballCenterPixel = projectCanonicalToCanvas(eyeLandmarks.right.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight)
-    const rightEyeballCenter = pixel2metric(rightEyeballCenterPixel.x,rightEyeballCenterPixel.y, frameWidth, frameHeight, fx, rightPupilZ)
-    const rightGazeCartesian = gazeCartesian({...rightEyeballCenter, z:rightPupilZ+1.175}, {...rightPupilXY, z: rightPupilZ});
-    //
-    // const rightEyeballCenter = getEyeballCenter(faceLandmarks, 'right', frameWidth, frameHeight, fx, rightPupilZ)
-    // const rightGazeCartesian = gazeCartesian(rightEyeballCenter, {...rightPupilXY, z: rightPupilZ});
+    const rightEyeballCenter = getEyeballCenter(faceLandmarks, 'right', frameWidth, frameHeight, fx, rightPupilZ)
+    // const rightEyeballCenter = getCanonicalEyeballCenter('right',facialTransformationMatrix,fx,fxFacelandmarker,frameWidth,frameHeight,rightPupilZ)
+    const rightGazeCartesian = gazeCartesian(rightEyeballCenter, {...rightPupilXY, z: rightPupilZ});
 
     // Cyclopean
     const cyclopeanGaze = averageGaze(leftGazeCartesian, rightGazeCartesian)
@@ -138,16 +127,15 @@ export function irisUnitGaze (
     const averageIrisDepth = (leftPupilZ + rightPupilZ)/2
     const cyclopeanEyeDepth = averageIrisDepth+1.175
     const cyclopeanEyeOrigin = landmark2Metric(cyclopeanEyePixel.x, cyclopeanEyePixel.y, frameWidth, frameHeight, fx, cyclopeanEyeDepth)
-    // console.log({...rightPupilXY, z:-rightPupilZ}, {x: facialTransformationMatrix[12],y: facialTransformationMatrix[13],z: facialTransformationMatrix[14]})
-
     const cyclopeanOrigin: Coordinate3D = { ...cyclopeanEyeOrigin, z: averageIrisDepth };
+
     const screenPog = intersectScreenPlane(cyclopeanOrigin, cyclopeanGaze);
-    console.log(screenPog);
+    
     const debug = {
         landmarkPupilLeft: metric2Pixel({...leftPupilXY, z: leftPupilZ}, frameWidth, frameHeight, fx),
         landmarkPupilRight: metric2Pixel({...rightPupilXY, z: rightPupilZ}, frameWidth, frameHeight, fx),
-        canonicalPupilLeft: metric2Pixel({...leftEyeballCenter, z: leftPupilZ}, frameWidth, frameHeight, fx),
-        canonicalPupilRight: metric2Pixel({...rightEyeballCenter, z: rightPupilZ}, frameWidth, frameHeight, fx)
+        canonicalPupilLeft: metric2Pixel(leftEyeballCenter, frameWidth, frameHeight, fx),
+        canonicalPupilRight: metric2Pixel(rightEyeballCenter, frameWidth, frameHeight, fx)
         // canonicalPupilLeft: leftEyeballCenterPixel,
         // canonicalPupilRight: rightEyeballCenterPixel
     };
@@ -175,6 +163,125 @@ export function irisUnitGaze (
     };
 }
 
+
+// EXTRACT EYE LOCATIONS --------------------------------------
+function irisDepth(
+    landmarks: NormalizedLandmark[],
+    side: 'left' | 'right',
+    frameWidth: number,
+    frameHeight: number,
+    fx: number,
+): number {
+    // https://research.google/blog/mediapipe-iris-real-time-iris-tracking-depth-estimation/
+    const IRIS_DIAMETER_CM = 1.17; // HVID
+
+    // Extract largest of iris height/width
+    const irisTop = landmarks[eyeLandmarks[side].iris.top]
+    const irisBottom = landmarks[eyeLandmarks[side].iris.bottom]
+    const irisHeight = landmarkDistancePx(irisTop, irisBottom, frameWidth, frameHeight);
+
+    const irisInner = landmarks[eyeLandmarks[side].iris.inner]
+    const irisOuter = landmarks[eyeLandmarks[side].iris.outer]
+    const irisWidth = landmarkDistancePx(irisInner, irisOuter, frameWidth, frameHeight);
+
+    const apparentDiameterPx = Math.max(irisHeight, irisWidth);
+
+    // Depth is based on focal length
+    return (fx * IRIS_DIAMETER_CM) / apparentDiameterPx; // flip for same coordinates as facelandmarker
+    // const pxPerCm = apparentDiameterPx/IRIS_DIAMETER_CM
+    // const frameWidthCm = (frameWidth/apparentDiameterPx)*IRIS_DIAMETER_CM
+    // const frameHeightCm = (frameHeight/apparentDiameterPx)*IRIS_DIAMETER_CM
+}
+
+// Eyeball Centre using midpoint between eye corners
+function getEyeballCenter(
+    landmarks: NormalizedLandmark[],
+    side: 'left' | 'right',
+    frameWidth: number,
+    frameHeight: number,
+    fx: number,
+    z: number
+): Coordinate3D {
+    const EYEBALL_AXIAL_RADIUS = 1.175 // https://pmc.ncbi.nlm.nih.gov/articles/PMC4238270/
+    const innerEyeCorner = landmarks[eyeLandmarks[side].corners.inner]
+    const outerEyeCorner = landmarks[eyeLandmarks[side].corners.outer]
+    const eyeMiddle = midpoint(innerEyeCorner, outerEyeCorner)
+    const eyeMiddleMetric = landmark2Metric(eyeMiddle.x, eyeMiddle.y, frameWidth, frameHeight, fx, z)
+    // Work backwards along head vector
+
+    // Note tried using xyz (idx 8,9,10) from facelandmarker transformation matrix and walking backwards into the head but seems too noisy?
+    // TODO: can also get angular rotations from iris: roll is angle between eyes, yaw is size difference, pitch can't get though...
+    return {
+        x: eyeMiddleMetric.x,
+        y: eyeMiddleMetric.y + .1, // TODO: Temp fix as midpoint of eyes is below centre and biases upwards?
+        z: z + EYEBALL_AXIAL_RADIUS
+    };
+}
+
+function walkIntoHead(
+    matrix: number[],
+    start: Coordinate3D,
+    distance: number
+): Coordinate3D {
+    // Column-major: the Z basis vector of the face's local frame lives in
+    // matrix indices 8, 9, 10 (third column, ignoring the w row).
+    const zx = matrix[8];
+    const zy = matrix[9];
+    const zz = matrix[10];
+
+    // Normalize in case of any numerical drift (rotation columns should already be unit length).
+    const len = Math.hypot(zx, zy, zz) || 1;
+    const nx = zx / len;
+    const ny = zy / len;
+    const nz = zz / len;
+
+    // "Backwards into the head" = negative local Z direction.
+    return {
+        x: start.x - nx * distance,
+        y: start.y - ny * distance,
+        z: start.z - nz * distance,
+    };
+}
+
+// Eyeball Centre using iris in canonical facemesh estimate
+export function getCanonicalEyeballCenter(
+    side: 'left' | 'right',
+    transformationMatrix: number[],
+    fx: number,
+    mediapipeFx: number,
+    frameWidth: number,
+    frameHeight: number,
+    z: number
+): Coordinate3D {
+    // Move from mediapipe's facial transformation matrix at 'center of mass of face' to the canonical iris position at center of eye
+    // vertices from: https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/face_model_with_iris.obj
+    const CANONICAL_VERTICES = {
+        left: {x: 3.181751, y: 2.635786, z: 3.826339}, // 473
+        right: {x: -3.18175, y: 2.635786, z: 3.826339} // 468
+    }
+    const v = CANONICAL_VERTICES[side]
+    const m = transformationMatrix;
+    const eyeCenter3D = {
+        x: (m[0]*v.x + m[4]*v.y + m[8]*v.z  + m[12]),
+        y: -(m[1]*v.x + m[5]*v.y + m[9]*v.z  + m[13]), // invert y inline with mediapipe convention: up = positive
+        z: -(m[2]*v.x + m[6]*v.y + m[10]*v.z + m[14]) // invert z inline with mediapipe convention: far = negative
+    };
+
+    // Project to pixel on screen so we can covert to metric the same way as the iris position
+    const eyeCenterSurfacePixel: Point = {
+        x: mediapipeFx * (eyeCenter3D.x / eyeCenter3D.z) + frameWidth / 2,
+        y: mediapipeFx * (eyeCenter3D.y / eyeCenter3D.z) + frameHeight / 2,
+    }
+
+    // Convert to 3D metric - assume same depth as iris, should roughly hold
+    const eyeCenterIrisMetric = pixel2metric(eyeCenterSurfacePixel.x, eyeCenterSurfacePixel.y, frameWidth, frameHeight, fx, z)
+    const eyeCenterIris3D = {...eyeCenterIrisMetric, z}
+    // to be honest just adding 1.175 to z works well ... maybe better?
+    return walkIntoHead(transformationMatrix, eyeCenterIris3D, -1.175);
+}
+
+
+// GAZE CALCULATION --------------------------------------
 function intersectScreenPlane(
     origin: Coordinate3D,
     gaze: Coordinate3D,
@@ -214,29 +321,7 @@ function gazeCartesian(
 }
 
 
-function getEyeballCenter(
-    landmarks: NormalizedLandmark[],
-    side: 'left' | 'right',
-    frameWidth: number,
-    frameHeight: number,
-    fx: number,
-    z: number
-): Coordinate3D {
-    const EYEBALL_AXIAL_RADIUS = 1.175 // https://pmc.ncbi.nlm.nih.gov/articles/PMC4238270/
-    const innerEyeCorner = landmarks[eyeLandmarks[side].corners.inner]
-    const outerEyeCorner = landmarks[eyeLandmarks[side].corners.outer]
-    const eyeMiddle = midpoint(innerEyeCorner, outerEyeCorner)
-    const eyeMiddleMetric = landmark2Metric(eyeMiddle.x, eyeMiddle.y, frameWidth, frameHeight, fx, z)
-    // Work backwards along head vector
-
-    // Note tried using xyz (idx 8,9,10) from facelandmarker transformation matrix and walking backwards into the head but seems too noisy?
-    // TODO: can also get angular rotations from iris: roll is angle between eyes, yaw is size difference, pitch can't get though...
-    return {
-        x: eyeMiddleMetric.x,
-        y: eyeMiddleMetric.y + .1, // TODO: quick temp fix here for some bias in output where middle of eyeball between eye corners biases output upwards
-        z: z + EYEBALL_AXIAL_RADIUS
-    };
-}
+// LANDMARK UTILITIES --------------------------------------
 
 function denormaliseLandmark(landmark: Point, width: number, height: number): Point {
     // Note Point {x,y} is technically a subset of NormalizedLandmark {x,y,z} from FaceLandmarker
@@ -245,7 +330,6 @@ function denormaliseLandmark(landmark: Point, width: number, height: number): Po
         y: landmark.y * height,
     }
 }
-
 
 function midpoint (a: Point, b: Point): Point {
     return {
@@ -265,33 +349,23 @@ function landmarkDistancePx(
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-function irisDepth(
-    landmarks: NormalizedLandmark[],
-    side: 'left' | 'right',
+
+// PIXEL/METRIC CONVERSION ----------------------------------
+
+function pixel2metric(
+    x: number,
+    y: number,
     frameWidth: number,
     frameHeight: number,
     fx: number,
-): number {
-    // https://research.google/blog/mediapipe-iris-real-time-iris-tracking-depth-estimation/
-    const IRIS_DIAMETER_CM = 1.17; // HVID
-
-    // Extract largest of iris height/width
-    const irisTop = landmarks[eyeLandmarks[side].iris.top]
-    const irisBottom = landmarks[eyeLandmarks[side].iris.bottom]
-    const irisHeight = landmarkDistancePx(irisTop, irisBottom, frameWidth, frameHeight);
-
-    const irisInner = landmarks[eyeLandmarks[side].iris.inner]
-    const irisOuter = landmarks[eyeLandmarks[side].iris.outer]
-    const irisWidth = landmarkDistancePx(irisInner, irisOuter, frameWidth, frameHeight);
-
-    const apparentDiameterPx = Math.max(irisHeight, irisWidth);
-
-    // Depth is based on focal length
-    return (fx * IRIS_DIAMETER_CM) / apparentDiameterPx; // flip for same coordinates as facelandmarker
-    // const pxPerCm = apparentDiameterPx/IRIS_DIAMETER_CM
-    // const frameWidthCm = (frameWidth/apparentDiameterPx)*IRIS_DIAMETER_CM
-    // const frameHeightCm = (frameHeight/apparentDiameterPx)*IRIS_DIAMETER_CM
+    z: number
+): Point {
+    return {
+        x: ((x-(frameWidth/2)) / fx) * z,
+        y: ((-y+(frameHeight/2)) / fx) * z,
+    }
 }
+
 
 function landmark2Metric(
     x: number,
@@ -323,18 +397,4 @@ export function metric2Pixel(
         x: pixelX + frameWidth / 2,
         y: -pixelY + frameHeight / 2,
     };
-}
-
-function pixel2metric(
-    x: number,
-    y: number,
-    frameWidth: number,
-    frameHeight: number,
-    fx: number,
-    z: number
-): Point {
-    return {
-        x: ((x-(frameWidth/2)) / fx) * z,
-        y: ((-y+(frameHeight/2)) / fx) * z,
-    }
 }
