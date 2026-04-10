@@ -123,14 +123,14 @@ export function irisUnitGaze (
 
     // Cyclopean
     const cyclopeanGaze = averageGaze(leftGazeCartesian, rightGazeCartesian)
-    const cyclopeanEyePixel = midpoint(faceLandmarks[eyeLandmarks.left.corners.inner], faceLandmarks[eyeLandmarks.right.corners.inner])
-    const averageIrisDepth = (leftPupilZ + rightPupilZ)/2
-    const cyclopeanEyeDepth = averageIrisDepth+1.175
-    const cyclopeanEyeOrigin = landmark2Metric(cyclopeanEyePixel.x, cyclopeanEyePixel.y, frameWidth, frameHeight, fx, cyclopeanEyeDepth)
-    const cyclopeanOrigin: Coordinate3D = { ...cyclopeanEyeOrigin, z: averageIrisDepth };
+    const cyclopeanOrigin: Coordinate3D = {
+        x: (leftEyeballCenter.x + rightEyeballCenter.x) / 2,
+        y: (leftEyeballCenter.y + rightEyeballCenter.y) / 2,
+        z: (leftEyeballCenter.z + rightEyeballCenter.z) / 2,
+    };
 
     const screenPog = intersectScreenPlane(cyclopeanOrigin, cyclopeanGaze);
-    
+
     const debug = {
         landmarkPupilLeft: metric2Pixel({...leftPupilXY, z: leftPupilZ}, frameWidth, frameHeight, fx),
         landmarkPupilRight: metric2Pixel({...rightPupilXY, z: rightPupilZ}, frameWidth, frameHeight, fx),
@@ -155,7 +155,7 @@ export function irisUnitGaze (
         cyclopean: {
             origin: cyclopeanOrigin,
             vector: cyclopeanGaze,
-            pixel: denormaliseLandmark(cyclopeanEyePixel, frameWidth, frameHeight)
+            pixel: metric2Pixel(cyclopeanOrigin, frameWidth, frameHeight, fx)
         },
         screenPog,
         fx,
