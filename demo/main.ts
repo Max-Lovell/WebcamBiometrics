@@ -130,17 +130,29 @@ const showResults = (result: BiometricsResult) => {
         if (irisGaze.debug.headAxes) {
             drawHeadAxes(webcamOverlayCtx, irisGaze.debug.headAxes);
         }
+        if (irisGaze.debug.landmarkPupilLeft) {
+            drawDebugPixel(webcamOverlayCtx,
+                irisGaze.debug.landmarkPupilLeft.x,
+                irisGaze.debug.landmarkPupilLeft.y,
+                { color: 'orange', label: 'L Iris' });
+        }
+        if (irisGaze.debug.landmarkPupilRight) {
+            drawDebugPixel(webcamOverlayCtx,
+                irisGaze.debug.landmarkPupilRight.x,
+                irisGaze.debug.landmarkPupilRight.y,
+                { color: 'purple', label: 'R Iris' });
+        }
         if (irisGaze.debug.canonicalPupilLeft) {
             drawDebugPixel(webcamOverlayCtx,
                 irisGaze.debug.canonicalPupilLeft.x,
                 irisGaze.debug.canonicalPupilLeft.y,
-                { color: 'lime', label: 'L' });
+                { color: 'lime', label: 'L Centre' });
         }
         if (irisGaze.debug.canonicalPupilRight) {
             drawDebugPixel(webcamOverlayCtx,
                 irisGaze.debug.canonicalPupilRight.x,
                 irisGaze.debug.canonicalPupilRight.y,
-                { color: 'blue', label: 'R' });
+                { color: 'blue', label: 'R Centre' });
         }
     }
     // if (irisGaze) {
