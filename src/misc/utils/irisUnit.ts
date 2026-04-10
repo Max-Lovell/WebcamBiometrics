@@ -108,17 +108,29 @@ export function irisUnitGaze (
     const leftPupilZ = irisDepth(faceLandmarks, 'left', frameWidth, frameHeight, fx)
     const leftPupil = faceLandmarks[eyeLandmarks['left'].pupil]
     const leftPupilXY = landmark2Metric(leftPupil.x, leftPupil.y, frameWidth, frameHeight, fx, leftPupilZ)
-    const leftEyeballCenter = getEyeballCenter(faceLandmarks, 'left', frameWidth, frameHeight, fx, leftPupilZ)
     // const leftEyeballCenter = getEyeballCenterFromCanonical(eyeLandmarks['left'].pupil, facialTransformationMatrix, leftPupilZ)
-    const leftGazeCartesian = gazeCartesian(leftEyeballCenter, {...leftPupilXY, z: leftPupilZ});
 
+    const leftEyeballCenterPixel = projectCanonicalToCanvas(eyeLandmarks.left.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight)
+    const leftEyeballCenter = pixel2metric(leftEyeballCenterPixel.x, leftEyeballCenterPixel.y, frameWidth, frameHeight, fx, leftPupilZ)
+    const leftGazeCartesian = gazeCartesian({...leftEyeballCenter, z:leftPupilZ+1.175}, {...leftPupilXY, z:leftPupilZ});
+
+    // const leftEyeballCenter = getEyeballCenter(faceLandmarks, 'left', frameWidth, frameHeight, fx, leftPupilZ)
+    // const leftGazeCartesian = gazeCartesian(leftEyeballCenter, {...leftPupilXY, z: leftPupilZ});
+
+    // console.log(metric2Pixel({...leftPupilXY, z: leftPupilZ}, frameWidth, frameHeight, fx), leftEyeballCenterPixel)
+    // console.log(leftPupilXY, leftEyeballCenter)
     // Right eye
     const rightPupilZ = irisDepth(faceLandmarks, 'right', frameWidth, frameHeight, fx)
     const rightPupil = faceLandmarks[eyeLandmarks['right'].pupil]
     const rightPupilXY = landmark2Metric(rightPupil.x, rightPupil.y, frameWidth, frameHeight, fx, rightPupilZ)
-    const rightEyeballCenter = getEyeballCenter(faceLandmarks, 'right', frameWidth, frameHeight, fx, rightPupilZ)
     // const rightEyeballCenter = getEyeballCenterFromCanonical(eyeLandmarks['right'].pupil, facialTransformationMatrix, rightPupilZ)
-    const rightGazeCartesian = gazeCartesian(rightEyeballCenter, {...rightPupilXY, z: rightPupilZ});
+
+    const rightEyeballCenterPixel = projectCanonicalToCanvas(eyeLandmarks.right.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight)
+    const rightEyeballCenter = pixel2metric(rightEyeballCenterPixel.x,rightEyeballCenterPixel.y, frameWidth, frameHeight, fx, rightPupilZ)
+    const rightGazeCartesian = gazeCartesian({...rightEyeballCenter, z:rightPupilZ+1.175}, {...rightPupilXY, z: rightPupilZ});
+    //
+    // const rightEyeballCenter = getEyeballCenter(faceLandmarks, 'right', frameWidth, frameHeight, fx, rightPupilZ)
+    // const rightGazeCartesian = gazeCartesian(rightEyeballCenter, {...rightPupilXY, z: rightPupilZ});
 
     // Cyclopean
     const cyclopeanGaze = averageGaze(leftGazeCartesian, rightGazeCartesian)
@@ -130,12 +142,14 @@ export function irisUnitGaze (
 
     const cyclopeanOrigin: Coordinate3D = { ...cyclopeanEyeOrigin, z: averageIrisDepth };
     const screenPog = intersectScreenPlane(cyclopeanOrigin, cyclopeanGaze);
-
+    console.log(screenPog);
     const debug = {
-        // canonicalPupilLeft: metric2Pixel(leftEyeballCenter, frameWidth, frameHeight, fx),
-        // canonicalPupilRight: metric2Pixel(rightEyeballCenter, frameWidth, frameHeight, fx)
-        // canonicalPupilLeft: projectCanonicalToCanvas(eyeLandmarks.left.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight),
-        // canonicalPupilRight: projectCanonicalToCanvas(eyeLandmarks.right.pupil, facialTransformationMatrix, fxFacelandmarker, frameWidth, frameHeight),
+        landmarkPupilLeft: metric2Pixel({...leftPupilXY, z: leftPupilZ}, frameWidth, frameHeight, fx),
+        landmarkPupilRight: metric2Pixel({...rightPupilXY, z: rightPupilZ}, frameWidth, frameHeight, fx),
+        canonicalPupilLeft: metric2Pixel({...leftEyeballCenter, z: leftPupilZ}, frameWidth, frameHeight, fx),
+        canonicalPupilRight: metric2Pixel({...rightEyeballCenter, z: rightPupilZ}, frameWidth, frameHeight, fx)
+        // canonicalPupilLeft: leftEyeballCenterPixel,
+        // canonicalPupilRight: rightEyeballCenterPixel
     };
 
     // TODO: calculating point of gaze with intersection of two gaze vectors might be better here
