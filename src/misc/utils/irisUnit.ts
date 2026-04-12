@@ -223,22 +223,20 @@ function walkIntoHead(
     start: Coordinate3D,
     distance: number
 ): Coordinate3D {
-    // Column-major: the Z basis vector of the face's local frame lives in
-    // matrix indices 8, 9, 10 (third column, ignoring the w row).
-    const zx = matrix[8];
-    const zy = matrix[9];
-    const zz = matrix[10];
+    const fx_basis =  matrix[8];
+    const fy_basis =  matrix[9];
+    const fz_basis = -matrix[10];
 
-    // Normalize in case of any numerical drift (rotation columns should already be unit length).
-    const len = Math.hypot(zx, zy, zz) || 1;
-    const nx = zx / len;
-    const ny = zy / len;
-    const nz = zz / len;
+    const len = Math.hypot(fx_basis, fy_basis, fz_basis) || 1;
+    const nx = fx_basis / len;
+    const ny = fy_basis / len;
+    const nz = fz_basis / len;
 
-    // "Backwards into the head" = negative local Z direction.
+    // "Backwards into the head" = negative head-forward direction.
+    // distance > 0 means walk backward by `distance` cm.
     return {
         x: start.x - nx * distance,
-        y: start.y - ny * distance,
+        y: start.y - ny * distance* 0.5,
         z: start.z - nz * distance,
     };
 }
@@ -253,35 +251,42 @@ export function getCanonicalEyeballCenter(
     frameHeight: number,
     z: number
 ): Coordinate3D {
-    // Move from mediapipe's facial transformation matrix at 'center of mass of face' to the canonical iris position at center of eye
-    // vertices from: https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/face_model_with_iris.obj
-    const CANONICAL_VERTICES = {
-        left: {x: 3.181751, y: 2.635786, z: 3.826339}, // 473
-        right: {x: -3.18175, y: 2.635786, z: 3.826339} // 468
-    const EYEBALL_AXIAL_RADIUS = .1175
-    const CANONICAL_VERTICES = { // TODO: Note consider just subtracting radius here - but what are the units??
-    }
-    const v = CANONICAL_VERTICES[side]
+    // TODO: weird routine here - couldn't figure out how to just -eyeball_radius in canon position, and project to same metric space as my iris estimate...
+    const EYEBALL_AXIAL_RADIUS = 1.175;
+
+    // Canonical iris SURFACE vertices (473 left, 468 right) from
+    // face_model_with_iris.obj. We do NOT walk into the head in canonical
+    // space — we want the iris surface pixel, then add the axial offset to
+    // z at the end (matching the eye-corner-midpoint approach).
+    const CANONICAL_IRIS = {
+        left:  { x:  3.181751, y: 2.635786, z: 3.826339 },
+        right: { x: -3.181751, y: 2.635786, z: 3.826339 },
+    };
+    const v = CANONICAL_IRIS[side];
     const m = transformationMatrix;
+
+    // Canonical -> MediaPipe camera space, applying MediaPipe's y/z sign
+    // convention (negate y and z so the projection formula below matches
+    // the version in the original code that was visually validated).
     const eyeCenter3D = {
-        x: (m[0]*v.x + m[4]*v.y + m[8]*v.z  + m[12]),
-        y: -(m[1]*v.x + m[5]*v.y + m[9]*v.z  + m[13]), // invert y inline with mediapipe convention: up = positive
-        z: -(m[2]*v.x + m[6]*v.y + m[10]*v.z + m[14]) // invert z inline with mediapipe convention: far = negative
+        x:  (m[0]*v.x + m[4]*v.y + m[8]*v.z  + m[12]),
+        y: -(m[1]*v.x + m[5]*v.y + m[9]*v.z  + m[13]),
+        z: -(m[2]*v.x + m[6]*v.y + m[10]*v.z + m[14]),
     };
 
-    // Project to pixel on screen so we can covert to metric the same way as the iris position
+    // Project to pixel under MediaPipe's intrinsics.
     const eyeCenterSurfacePixel: Point = {
         x: mediapipeFx * (eyeCenter3D.x / eyeCenter3D.z) + frameWidth / 2,
         y: mediapipeFx * (eyeCenter3D.y / eyeCenter3D.z) + frameHeight / 2,
-    }
+    };
 
-    // Convert to 3D metric - assume same depth as iris, should roughly hold
-    const eyeCenterIrisMetric = pixel2metric(eyeCenterSurfacePixel.x, eyeCenterSurfacePixel.y, frameWidth, frameHeight, fx, z)
-    const eyeCenterIris3D = {...eyeCenterIrisMetric, z}
-    // to be honest just adding 1.175 to z works well ... maybe better?
-    return walkIntoHead(transformationMatrix, eyeCenterIris3D, -1.175);
+    // Back-project to metric using our fx at the iris depth — this puts the
+    // point in the same coordinate frame as the pupil from landmark2Metric.
+    const eyeCenterIrisMetric = pixel2metric(eyeCenterSurfacePixel.x, eyeCenterSurfacePixel.y, frameWidth, frameHeight, fx, z,);
+
+    // return {...eyeCenterIrisMetric, z: z+EYEBALL_AXIAL_RADIUS}
+    return walkIntoHead(transformationMatrix, {...eyeCenterIrisMetric, z}, EYEBALL_AXIAL_RADIUS);
 }
-
 
 // GAZE CALCULATION --------------------------------------
 function intersectScreenPlane(
