@@ -289,6 +289,100 @@ export function getCanonicalEyeballCenter(
     return walkIntoHead(transformationMatrix, {...eyeCenterIrisMetric, z}, EYEBALL_AXIAL_RADIUS);
 }
 
+// HOLDING THESE HERE FOR ANALYSIS, some ideas on how to properly extract eyeball centre
+export function getCanonicalEyeballCenterV2(
+    side: 'left' | 'right',
+    transformationMatrix: number[],
+    fx: number,
+    mediapipeFx: number,
+    frameWidth: number,   // unused
+    frameHeight: number,  // unused
+    z: number
+): Coordinate3D {
+    void frameWidth; void frameHeight;
+
+    const EYEBALL_AXIAL_RADIUS = 1.175;
+    const CANONICAL_IRIS = {
+        left:  { x:  3.181751, y: 2.635786, z: 3.826339 - EYEBALL_AXIAL_RADIUS },
+        right: { x: -3.181751, y: 2.635786, z: 3.826339 - EYEBALL_AXIAL_RADIUS },
+    };
+    const v = CANONICAL_IRIS[side];
+    const m = transformationMatrix;
+
+    const mpX = m[0]*v.x + m[4]*v.y + m[8]*v.z  + m[12];
+    const mpY = m[1]*v.x + m[5]*v.y + m[9]*v.z  + m[13];
+    const mpZ = m[2]*v.x + m[6]*v.y + m[10]*v.z + m[14];
+
+    const k = (mediapipeFx / fx) * (z / -mpZ);
+
+    return {
+        x: mpX * k,
+        y: mpY * k,
+        z: z,
+    };
+}
+
+export function getCanonicalEyeballCenterV3(
+    side: 'left' | 'right',
+    transformationMatrix: number[],
+    fx: number,
+    mediapipeFx: number,
+    frameWidth: number,
+    frameHeight: number,
+    z: number,
+    pupilMetric: { x: number; y: number },  // pass in the pupil's metric x,y from landmark2Metric
+): Coordinate3D {
+    void mediapipeFx; void frameWidth; void frameHeight;
+
+    const EYEBALL_AXIAL_RADIUS = 1.175;
+    const CANONICAL_IRIS_SURFACE = {
+        left:  { x:  3.181751, y: 2.635786, z: 3.826339 },
+        right: { x: -3.181751, y: 2.635786, z: 3.826339 },
+    };
+    const irisSurf = CANONICAL_IRIS_SURFACE[side];
+    const eyeCenter = {
+        x: irisSurf.x,
+        y: irisSurf.y,
+        z: irisSurf.z - EYEBALL_AXIAL_RADIUS,
+    };
+
+    const m = transformationMatrix;
+
+    // Project both points through the matrix into MediaPipe space.
+    const irisMpX = m[0]*irisSurf.x + m[4]*irisSurf.y + m[8]*irisSurf.z  + m[12];
+    const irisMpY = m[1]*irisSurf.x + m[5]*irisSurf.y + m[9]*irisSurf.z  + m[13];
+    const irisMpZ = m[2]*irisSurf.x + m[6]*irisSurf.y + m[10]*irisSurf.z + m[14];
+
+    const ecMpX = m[0]*eyeCenter.x + m[4]*eyeCenter.y + m[8]*eyeCenter.z  + m[12];
+    const ecMpY = m[1]*eyeCenter.x + m[5]*eyeCenter.y + m[9]*eyeCenter.z  + m[13];
+    const ecMpZ = m[2]*eyeCenter.x + m[6]*eyeCenter.y + m[10]*eyeCenter.z + m[14];
+
+    // Relative offset from iris to eyeball center, in MediaPipe camera space.
+    // This is purely a rotation of (0, 0, -EYEBALL_AXIAL_RADIUS) in canonical
+    // space, so it has length EYEBALL_AXIAL_RADIUS in cm — no focal-length
+    // scaling needed because it's already a metric 3D vector in physical cm.
+    // The rotation is the same in any pinhole camera frame; the matrix's
+    // translation cancels out in the subtraction.
+    const dx = ecMpX - irisMpX;
+    const dy = ecMpY - irisMpY;
+    const dz = ecMpZ - irisMpZ;  // negative when face looks at camera (eyeball is further from camera)
+
+    // Convert to our space: +Y up matches, but our +Z points AWAY from the
+    // camera (positive forward) while MediaPipe's +Z points TOWARD the
+    // camera (face is at negative z). So flip the sign of dz for our frame.
+    const offset = { x: dx, y: dy, z: -dz };
+
+    // Anchor to the pupil in our space and add the offset. The pupil's
+    // metric (x, y) at depth z is already in our `fx`-based frame, so
+    // adding a physical-cm offset gives us the eyeball center in the
+    // same frame, with the correct axial depth difference preserved.
+    return {
+        x: pupilMetric.x + offset.x,
+        y: pupilMetric.y + offset.y,
+        z: z + offset.z,
+    };
+}
+
 // GAZE CALCULATION --------------------------------------
 function intersectScreenPlane(
     origin: Coordinate3D,
