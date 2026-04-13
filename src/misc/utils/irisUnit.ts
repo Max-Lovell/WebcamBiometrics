@@ -189,12 +189,68 @@ function irisDepth(
 
     // Depth is based on focal length
     return (fx * IRIS_DIAMETER_CM) / apparentDiameterPx; // flip for same coordinates as facelandmarker
+function irisDepthWidthHeight(
+    landmarks: NormalizedLandmark[],
+    side: 'left' | 'right',
+    frameWidth: number,
+    frameHeight: number,
+    fx: number,
+): {z: number, width: number, height: number} {
+    // https://research.google/blog/mediapipe-iris-real-time-iris-tracking-depth-estimation/
+    const IRIS_DIAMETER_CM = 1.17; // HVID
+
+    // Extract largest of iris height/width
+    const irisTop = landmarks[eyeLandmarks[side].iris.top]
+    const irisBottom = landmarks[eyeLandmarks[side].iris.bottom]
+    const irisHeight = landmarkDistancePx(irisTop, irisBottom, frameWidth, frameHeight);
+
+    const irisInner = landmarks[eyeLandmarks[side].iris.inner]
+    const irisOuter = landmarks[eyeLandmarks[side].iris.outer]
+    const irisWidth = landmarkDistancePx(irisInner, irisOuter, frameWidth, frameHeight);
+
+    const apparentDiameterPx = Math.max(irisHeight, irisWidth);
+
+    // TODO: why not return x,y here, - y is negative down x is negative right
     // const pxPerCm = apparentDiameterPx/IRIS_DIAMETER_CM
-    // const frameWidthCm = (frameWidth/apparentDiameterPx)*IRIS_DIAMETER_CM
-    // const frameHeightCm = (frameHeight/apparentDiameterPx)*IRIS_DIAMETER_CM
+    const frameWidthCm = (frameWidth/apparentDiameterPx)*IRIS_DIAMETER_CM
+    const frameHeightCm = (frameHeight/apparentDiameterPx)*IRIS_DIAMETER_CM
+    // Depth is based on focal length
+    return {
+        z: (fx * IRIS_DIAMETER_CM) / apparentDiameterPx, // flip for same coordinates as facelandmarker
+        width: frameWidthCm,
+        height: frameHeightCm
+    }
+}
+
+function landmark2cm(landmark: Point, frameWidthCm: number, frameHeightCm: number): Point {
+    return {
+        x: (landmark.x-.5) * frameWidthCm,
+        y: (-landmark.y+.5) * frameHeightCm
+    }
 }
 
 // Eyeball Centre using midpoint between eye corners
+function getEyeballCenterCm(
+    landmarks: NormalizedLandmark[],
+    side: 'left' | 'right',
+    frameWidthCm: number,
+    frameHeightCm: number,
+    z: number,
+): Coordinate3D {
+    // This is kinda nuts but also kinda works?
+    const EYEBALL_AXIAL_RADIUS = 1.175 // https://pmc.ncbi.nlm.nih.gov/articles/PMC4238270/
+    const innerEyeCorner = landmarks[eyeLandmarks[side].corners.inner]
+    const outerEyeCorner = landmarks[eyeLandmarks[side].corners.outer]
+    const eyeMiddle = midpoint(innerEyeCorner, outerEyeCorner)
+    const eyeMiddle3D = landmark2cm(eyeMiddle, frameWidthCm, frameHeightCm)
+    // Work backwards along head vector
+
+    // Note tried using xyz (idx 8,9,10) from facelandmarker transformation matrix and walking backwards into the head but seems too noisy?
+    // TODO: can also get angular rotations from iris: roll is angle between eyes, yaw is size difference, pitch can't get though...
+    // return walkIntoHead(transformationMatrix, eyeMiddle3D, EYEBALL_AXIAL_RADIUS)
+    return {...eyeMiddle3D, z:z+EYEBALL_AXIAL_RADIUS};
+}
+
 function getEyeballCenter(
     landmarks: NormalizedLandmark[],
     side: 'left' | 'right',
