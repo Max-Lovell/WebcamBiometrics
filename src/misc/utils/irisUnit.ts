@@ -228,6 +228,53 @@ function landmark2cm(landmark: Point, frameWidthCm: number, frameHeightCm: numbe
     }
 }
 
+function getEyeballCenterNew(
+    landmarks: NormalizedLandmark[],
+    side: 'left' | 'right',
+    frameWidth: number,
+    frameHeight: number,
+    fx: number,
+    z: number,                          // iris depth from irisDepth()
+    transformationMatrix: number[],
+): Coordinate3D {
+    const EYEBALL_AXIAL_RADIUS = 1.175;
+    const HALF_CORNER_SEPARATION = 1.5;
+    const CORNER_PLANE_OFFSET = 1.0;
+
+    const innerCorner = landmarks[eyeLandmarks[side].corners.inner];
+    const outerCorner = landmarks[eyeLandmarks[side].corners.outer];
+    const m = transformationMatrix;
+    const headX = { x: m[0], y: m[1], z: m[2] };
+    const headZ = { x: m[8], y: m[9], z: m[10] };
+    const zBase = z + CORNER_PLANE_OFFSET * Math.abs(headZ.z);
+    const cornerHalfDepth = HALF_CORNER_SEPARATION * headX.z;
+    const innerSign = side === 'left' ? -1 : +1;
+
+    const zInner = zBase + innerSign * cornerHalfDepth;
+    const zOuter = zBase - innerSign * cornerHalfDepth;
+
+    // Back-project each corner at its own depth.
+    const innerMetric = landmark2Metric(
+        innerCorner.x, innerCorner.y, frameWidth, frameHeight, fx, zInner
+    );
+    const outerMetric = landmark2Metric(
+        outerCorner.x, outerCorner.y, frameWidth, frameHeight, fx, zOuter
+    );
+
+    // 3D midpoint on the corner plane.
+    const midpoint3D: Coordinate3D = {
+        x: (innerMetric.x + outerMetric.x) / 2,
+        y: (innerMetric.y + outerMetric.y) / 2,
+        z: (zInner + zOuter) / 2,
+    };
+
+    return {
+        x: midpoint3D.x - headZ.x * EYEBALL_AXIAL_RADIUS,
+        y: midpoint3D.y - headZ.y * EYEBALL_AXIAL_RADIUS,
+        z: midpoint3D.z - headZ.z * EYEBALL_AXIAL_RADIUS,
+    };
+}
+
 // Eyeball Centre using midpoint between eye corners
 function getEyeballCenterCm(
     landmarks: NormalizedLandmark[],
