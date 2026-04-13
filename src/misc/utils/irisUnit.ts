@@ -207,7 +207,7 @@ function getEyeballCenter(
     const innerEyeCorner = landmarks[eyeLandmarks[side].corners.inner]
     const outerEyeCorner = landmarks[eyeLandmarks[side].corners.outer]
     const eyeMiddle = midpoint(innerEyeCorner, outerEyeCorner)
-    const eyeMiddleMetric = landmark2Metric(eyeMiddle.x, eyeMiddle.y, frameWidth, frameHeight, fx, z)
+    const eyeMiddleMetric = landmark2Metric(eyeMiddle.x, eyeMiddle.y, frameWidth, frameHeight, fx, z+ EYEBALL_AXIAL_RADIUS)
     // Work backwards along head vector
 
     // Note tried using xyz (idx 8,9,10) from facelandmarker transformation matrix and walking backwards into the head but seems too noisy?
