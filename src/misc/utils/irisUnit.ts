@@ -189,6 +189,8 @@ function irisDepth(
 
     // Depth is based on focal length
     return (fx * IRIS_DIAMETER_CM) / apparentDiameterPx; // flip for same coordinates as facelandmarker
+}
+
 function irisDepthWidthHeight(
     landmarks: NormalizedLandmark[],
     side: 'left' | 'right',
