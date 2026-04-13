@@ -135,9 +135,10 @@ export function irisUnitGaze (
         landmarkPupilLeft: metric2Pixel({...leftPupilXY, z: leftPupilZ}, frameWidth, frameHeight, fx),
         landmarkPupilRight: metric2Pixel({...rightPupilXY, z: rightPupilZ}, frameWidth, frameHeight, fx),
         canonicalPupilLeft: metric2Pixel(leftEyeballCenter, frameWidth, frameHeight, fx),
-        canonicalPupilRight: metric2Pixel(rightEyeballCenter, frameWidth, frameHeight, fx)
+        canonicalPupilRight: metric2Pixel(rightEyeballCenter, frameWidth, frameHeight, fx),
         // canonicalPupilLeft: leftEyeballCenterPixel,
         // canonicalPupilRight: rightEyeballCenterPixel
+        headAxes: computeHeadAxesDisplay(facialTransformationMatrix, frameWidth, frameHeight, fxFacelandmarker)
     };
 
     // TODO: calculating point of gaze with intersection of two gaze vectors might be better here
@@ -404,4 +405,66 @@ export function metric2Pixel(
         x: pixelX + frameWidth / 2,
         y: -pixelY + frameHeight / 2,
     };
+}
+
+// Compute head axes for display - just used for a sense check -------
+export function computeHeadAxesDisplay(
+    transformationMatrix: ArrayLike<number>,
+    frameWidth: number,
+    frameHeight: number,
+    fx: number,
+    axisLengthCm = 4,
+    eyeballCenter: boolean = true,
+    side: 'left'|'right' = 'right',
+): { origin: Point; xAxis: Point; yAxis: Point; zAxis: Point } {
+    const m = transformationMatrix;
+
+    let ox = m[12];
+    let oy = m[13];
+    let oz = m[14];
+    if(eyeballCenter){
+        // Origin of the head frame in camera space = translation column.
+        const EYEBALL_AXIAL_RADIUS = 1.175;
+        const CANONICAL_IRIS = {
+            left:  { x:  3.181751, y: 2.635786, z: 3.826339-EYEBALL_AXIAL_RADIUS },
+            right: { x: -3.181751, y: 2.635786, z: 3.826339-EYEBALL_AXIAL_RADIUS },
+        };
+        const v = CANONICAL_IRIS[side];
+
+        // Canonical -> MediaPipe camera space, applying MediaPipe's y/z sign
+        // convention (negate y and z so the projection formula below matches
+        // the version in the original code that was visually validated).
+        const eyeCenter3D = {
+            x:  (m[0]*v.x + m[4]*v.y + m[8]*v.z  + m[12]),
+            y: (m[1]*v.x + m[5]*v.y + m[9]*v.z  + m[13]),
+            z: (m[2]*v.x + m[6]*v.y + m[10]*v.z + m[14]),
+        };
+
+        ox = eyeCenter3D.x//m[12];
+        oy = eyeCenter3D.y//m[13];
+        oz = eyeCenter3D.z//m[14];
+    }
+
+
+    // Tips of each axis = origin + axisLength * (rotation column).
+    // Column 0 = model X in camera space, column 1 = model Y, column 2 = model Z.
+    const xTip: [number, number, number] = [ox + m[0]*axisLengthCm, oy + m[1]*axisLengthCm, oz + m[2]*axisLengthCm];
+    const yTip: [number, number, number] = [ox + m[4]*axisLengthCm, oy + m[5]*axisLengthCm, oz + m[6]*axisLengthCm];
+    const zTip: [number, number, number] = [ox + m[8]*axisLengthCm, oy + m[9]*axisLengthCm, oz + m[10]*axisLengthCm];
+
+    const project = (cx: number, cy: number, cz: number): Point => {
+        const depth = -cz;
+        // +y-down projection, directly to canvas coords.
+        return {
+            x: fx * (cx / depth) + frameWidth / 2,
+            y: fx * (-cy / depth) + frameHeight / 2,
+        };
+    };
+
+    const origin = project(ox, oy, oz);
+    const xAxis = project(xTip[0], xTip[1], xTip[2]);
+    const yAxis = project(yTip[0], yTip[1], yTip[2]);
+    const zAxis = project(zTip[0], zTip[1], zTip[2]);
+
+    return { origin, xAxis, yAxis, zAxis };
 }
